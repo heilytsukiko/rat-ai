@@ -5,13 +5,13 @@ import json
 from pathlib import Path
 
 
-def frame_clip(path, center, duration, size=336):
+def frame_clip(path, center, duration, size=336, span=3):
     import cv2
     import numpy as np
     from rat_ai.video import sample_frames
     frames = []
-    start = max(0, center - 1.5)
-    end = min(duration - .001, center + 1.5)
+    start = max(0, center - span/2)
+    end = min(duration - .001, center + span/2)
     images, _, _ = sample_frames(Path(path), start, max(.001, end-start), 4, size)
     for image in images:
         h, w = image.shape[:2]

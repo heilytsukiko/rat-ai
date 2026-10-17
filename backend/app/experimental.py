@@ -11,6 +11,7 @@ class Candidate(BaseModel):
     score: float = Field(ge=0, le=1, allow_inf_nan=False)
     first_scored_time_sec: float = Field(ge=0, allow_inf_nan=False)
     last_scored_time_sec: float = Field(ge=0, allow_inf_nan=False)
+    observation_draft: str | None = Field(default=None,max_length=1600)
 
 
 class CandidatePolicy(BaseModel):
@@ -35,6 +36,7 @@ class RawPrediction(BaseModel):
     total_elapsed_sec: float = Field(ge=0, allow_inf_nan=False)
     note: str = Field(max_length=1000)
     candidate_policy: CandidatePolicy = Field(default_factory=CandidatePolicy)
+    observation_model: Literal['Qwen/Qwen2.5-VL-7B-Instruct'] | None = None
 
 
 def adapt_prediction(text, duration, extract_frame):
@@ -76,6 +78,8 @@ def adapt_prediction(text, duration, extract_frame):
                 for e in prediction.candidates]
     if received != expected:
         raise ValueError('Experimental candidates disagree with declared policy')
+    if any(e.observation_draft is not None for e in prediction.candidates) and not prediction.observation_model:
+        raise ValueError('A draft requires declared observation model')
     candidates = []
     previous_end = -1
     for event in prediction.candidates:
@@ -84,9 +88,17 @@ def adapt_prediction(text, duration, extract_frame):
         if event.score < prediction.threshold or (event.timecode_sec, event.score) not in zip(times, scores):
             raise ValueError('Experimental candidate disagrees with scan')
         previous_end = event.last_scored_time_sec
-        candidates.append({**event.model_dump(), 'evidence_frames': [extract_frame(event.timecode_sec)]})
+        timestamps=[event.timecode_sec]
+        if event.observation_draft is not None:
+            if not event.observation_draft.strip():
+                raise ValueError('Empty observation draft')
+            timestamps=list(dict.fromkeys([event.timecode_sec,max(0,event.timecode_sec-3.5),
+                                            min(max(0,duration-.15),event.timecode_sec+3.5)]))
+        candidates.append({**event.model_dump(exclude_none=True),
+                           'evidence_frames': [extract_frame(t) for t in timestamps]})
     return {'analysis_mode': 'experimental', 'experimental': True,
             'candidate_policy': policy.model_dump(),
+            **({'observation_model':prediction.observation_model} if prediction.observation_model else {}),
             'candidates': candidates, 'duration_sec': duration,
             'threshold': prediction.threshold, 'model': prediction.model,
             'video_score': prediction.video_score, 'processing_sec': prediction.processing_sec}

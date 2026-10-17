@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "real_detector": true,
+  "via_frontend_proxy": true,
+  "analysis_mode": "experimental",
+  "duration_sec": 6.0,
+  "candidate_policy": {
+    "min_windows": 2,
+    "representative": "center"
+  },
+  "observation_model": "Qwen/Qwen2.5-VL-7B-Instruct",
+  "candidates_described": 1,
+  "candidates": 1,
+  "jpeg_frames_checked": 3,
+  "elapsed_sec": 20.695662173000528,
+  "quality_evaluated": false
+}

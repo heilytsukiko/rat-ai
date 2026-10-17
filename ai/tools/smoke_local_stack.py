@@ -56,10 +56,16 @@ def smoke(url, video, output):
         raise ValueError('Expected real experimental detector output')
     if 'verdict' in result or 'violations' in result:
         raise ValueError('Raw detector output must not invent a legal verdict')
-    duration, frames = result['duration_sec'], 0
+    duration, frames, described = result['duration_sec'], 0, 0
     if not math.isfinite(duration) or not 0 < duration <= 180:
         raise ValueError('Invalid duration')
     for candidate in result['candidates']:
+        if 'observation_draft' in candidate:
+            if (result.get('observation_model')!='Qwen/Qwen2.5-VL-7B-Instruct'
+                or not isinstance(candidate['observation_draft'],str)
+                or not 0<len(candidate['observation_draft'].strip())<=1600):
+                raise ValueError('Invalid observation draft')
+            described+=1
         if not 0 <= candidate['timecode_sec'] < duration or not 0 <= candidate['score'] <= 1:
             raise ValueError('Invalid candidate')
         if 'source' in candidate or 'type' in candidate:
@@ -75,6 +81,7 @@ def smoke(url, video, output):
     report = {'status': 'passed', 'real_detector': True, 'via_frontend_proxy': True,
               'analysis_mode': result['analysis_mode'], 'duration_sec': duration,
               'candidate_policy': result.get('candidate_policy'),
+              'observation_model': result.get('observation_model'), 'candidates_described': described,
               'candidates': len(result['candidates']), 'jpeg_frames_checked': frames,
               'elapsed_sec': time.monotonic() - started,
               'quality_evaluated': False}

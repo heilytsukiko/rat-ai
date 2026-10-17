@@ -64,8 +64,11 @@ function experimentalResult(value: Record<string, unknown>, fileName: string): A
     if (!isRecord(event) || !timestamp(event.timecode_sec) || event.timecode_sec >= duration
       || !timestamp(event.score) || event.score < threshold || event.score > 1
       || !Array.isArray(event.evidence_frames) || event.evidence_frames.length < 1 || event.evidence_frames.length > 3) return invalid();
+    const observation = event.observation_draft;
+    if (observation !== undefined && (!text(observation) || observation.length > 1600
+      || value.observation_model !== 'Qwen/Qwen2.5-VL-7B-Instruct')) return invalid();
     return { id: `${value.job_id}-${index}`, type: 'Фрагмент для проверки', timecodeSec: event.timecode_sec,
-      description: `Оценка детектора: ${event.score.toFixed(3)}. Это не вероятность нарушения. Тип события и нормативное основание не установлены.`,
+      description: `${observation ? `Черновик описания ИИ — проверьте по кадрам: ${observation}\n\n` : ''}Оценка детектора: ${event.score.toFixed(3)}. Это не вероятность нарушения. Тип события и нормативное основание не установлены.`,
       evidenceFrames: event.evidence_frames.map((frame: unknown, frameIndex: number) => {
         if (!isRecord(frame) || !timestamp(frame.timestamp_sec) || frame.timestamp_sec >= duration
           || Math.abs(frame.timestamp_sec - (event.timecode_sec as number)) > 5) return invalid();

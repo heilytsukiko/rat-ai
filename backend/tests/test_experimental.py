@@ -39,6 +39,32 @@ def test_strict_mode_cannot_accept_raw_detector_output(monkeypatch):
         pipeline.analyze(Path('test.mov'))
 
 
+def test_optional_gpu_description_keeps_result_inconclusive_and_adds_context_frames():
+    prediction=raw()
+    prediction['observation_model']='Qwen/Qwen2.5-VL-7B-Instruct'
+    prediction['candidates'][0]['observation_draft']='A synthetic rectangle moves.'
+    result=adapt_prediction(json.dumps(prediction),20,lambda t:{'timestamp_sec':t})
+    assert result['candidates'][0]['observation_draft']=='A synthetic rectangle moves.'
+    assert [f['timestamp_sec'] for f in result['candidates'][0]['evidence_frames']]==[2.5,0,6]
+    assert 'verdict' not in result and 'source' not in result['candidates'][0]
+
+
+@pytest.mark.parametrize('value',['', ' '*4, 'x'*1601, {'unsafe':'object'}])
+def test_malformed_observation_is_rejected(value):
+    prediction=raw()
+    prediction['observation_model']='Qwen/Qwen2.5-VL-7B-Instruct'
+    prediction['candidates'][0]['observation_draft']=value
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps(prediction),20,lambda _:pytest.fail('Invalid description'))
+
+
+def test_observation_requires_a_declared_known_model():
+    prediction=raw()
+    prediction['candidates'][0]['observation_draft']='Synthetic action'
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps(prediction),20,lambda _:pytest.fail('Missing model'))
+
+
 def test_empty_experimental_result_does_not_become_no_violation():
     prediction = raw()
     prediction.update(video_score=.1, peak_time_sec=.5, scan_scores=[.1, .1, .1], candidates=[])

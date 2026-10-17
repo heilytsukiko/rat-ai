@@ -1,0 +1,82 @@
+{
+  "results": {
+    "qwen25": {
+      "metrics": {
+        "tp": 4,
+        "tn": 0,
+        "fp": 4,
+        "fn": 0,
+        "accuracy": 0.5,
+        "precision": 0.5,
+        "recall": 1.0,
+        "f1": 0.6666666666666666,
+        "threshold": 0.5,
+        "roc_auc": 0.1875
+      },
+      "localization": {
+        "tolerance_sec": 2,
+        "annotated_points": 4,
+        "matched_points": 1,
+        "point_recall": 0.25,
+        "negative_video_candidates": 9
+      }
+    },
+    "qwen3": {
+      "metrics": {
+        "tp": 4,
+        "tn": 0,
+        "fp": 4,
+        "fn": 0,
+        "accuracy": 0.5,
+        "precision": 0.5,
+        "recall": 1.0,
+        "f1": 0.6666666666666666,
+        "threshold": 0.5,
+        "roc_auc": 0.375
+      },
+      "localization": {
+        "tolerance_sec": 2,
+        "annotated_points": 4,
+        "matched_points": 0,
+        "point_recall": 0.0,
+        "negative_video_candidates": 5
+      }
+    },
+    "equal_mean": {
+      "metrics": {
+        "tp": 4,
+        "tn": 0,
+        "fp": 4,
+        "fn": 0,
+        "accuracy": 0.5,
+        "precision": 0.5,
+        "recall": 1.0,
+        "f1": 0.6666666666666666,
+        "threshold": 0.5,
+        "roc_auc": 0.5
+      },
+      "localization": {
+        "tolerance_sec": 2,
+        "annotated_points": 4,
+        "matched_points": 0,
+        "point_recall": 0.0,
+        "negative_video_candidates": 7
+      }
+    }
+  },
+  "recommended_by_validation": "qwen25",
+  "candidate_policy": {
+    "min_windows": 2,
+    "representative": "center"
+  },
+  "ensemble_weights": [
+    0.5,
+    0.5
+  ],
+  "independent_test": false,
+  "limitations": [
+    "Eight repeatedly used validation videos; selection may overfit.",
+    "Binary frame-sequence review scores do not establish event types or legal meaning.",
+    "Winner needs runtime and comparison against the existing detector before deployment."
+  ]
+}

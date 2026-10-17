@@ -1,5 +1,6 @@
 """Start the repository's site/API on its allocated Brev Linux host."""
 import json
+import argparse
 import os
 from pathlib import Path
 import secrets
@@ -10,9 +11,22 @@ import urllib.request
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--describe-with-config',type=Path)
+    parser.add_argument('--restart-api',action='store_true')
+    parser.add_argument('--replace-frontend',action='store_true')
+    args=parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     runtime = root / 'ai/local/server'
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+    selection_file=runtime/'selection.json'
+    if args.describe_with_config:
+        config_path=args.describe_with_config.resolve()
+        config=json.loads(config_path.read_text(encoding='utf-8'))
+        if config.get('model')!='Qwen/Qwen2.5-VL-7B-Instruct' or not args.restart_api:
+            parser.error('Known 7B config and --restart-api are required')
+        selection_file.write_text(json.dumps({'observation_config':str(config_path)}),encoding='utf-8')
+    selection=json.loads(selection_file.read_text()) if selection_file.exists() else {}
     secret_file = runtime / 'api.env'
     if not secret_file.exists():
         secret_file.write_text('API_KEY=' + secrets.token_urlsafe(40) + '\n', encoding='utf-8')
@@ -38,11 +52,26 @@ def main():
             api_ready = True
     except OSError:
         api_ready = False
+    if api_ready and args.restart_api:
+        import psutil
+        import sqlite3
+        with sqlite3.connect(runtime/'storage/jobs.sqlite3') as connection:
+            if connection.execute("select count(*) from jobs where status='processing'").fetchone()[0]:
+                raise RuntimeError('Wait for pending analyses before restarting')
+        process=psutil.Process(int((runtime/'backend.pid').read_text()))
+        if process.cwd()!=str(root/'backend') or 'app.main:app' not in process.cmdline():
+            raise RuntimeError('API PID does not match this deployment')
+        process.terminate()
+        process.wait(timeout=15)
+        api_ready=False
     if not api_ready:
+        command=[sys.executable,str(root/'ai/tools/infer_detector.py')]
+        if selection.get('observation_config'):
+            command+=['--describe-with-config',selection['observation_config']]
         env = os.environ.copy()
         env.update(API_KEY=key, ANALYSIS_MODE='experimental', DATA_DIR=str(runtime / 'storage'),
                    PYTHONPATH=str(root / 'ai'), USE_TF='0', USE_FLAX='0',
-                   ANALYZER_COMMAND=json.dumps([sys.executable, str(root / 'ai/tools/infer_detector.py')]))
+                   ANALYZER_COMMAND=json.dumps(command))
         log = (runtime / 'backend.log').open('ab')
         process = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'app.main:app',
                                     '--host', '127.0.0.1', '--port', '8000', '--workers', '1'],
@@ -62,6 +91,12 @@ def main():
             raise RuntimeError('API startup timed out')
     existing = subprocess.run(['docker', 'container', 'inspect', 'rat-ai-site'],
                               capture_output=True, text=True)
+    if not existing.returncode:
+        if json.loads(existing.stdout)[0]['Config'].get('Labels',{}).get('rat-ai.project')!='rat-ai':
+            raise RuntimeError('Container name belongs to another deployment')
+        if args.replace_frontend:
+            subprocess.run(['docker','rm','-f','rat-ai-site'],check=True,capture_output=True)
+            existing=subprocess.run(['docker','container','inspect','rat-ai-site'],capture_output=True,text=True)
     if existing.returncode:
         subprocess.run(['docker', 'run', '-d', '--name', 'rat-ai-site', '--network', 'host',
                         '--restart', 'unless-stopped', '--label', 'rat-ai.project=rat-ai',

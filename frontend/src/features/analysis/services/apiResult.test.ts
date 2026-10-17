@@ -35,6 +35,20 @@ const experimental = () => ({ job_id: 'job', status: 'done', analysis_mode: 'exp
   candidates: [{ timecode_sec: 4, score: .8, evidence_frames: [{ timestamp_sec: 4, image_base64: '/9j/' }] }] });
 
 describe('experimental detector integration', () => {
+  it('shows optional GPU observations as drafts while retaining an inconclusive verdict', () => {
+    const payload = { ...experimental(), observation_model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+      candidates: [{ ...experimental().candidates[0], observation_draft: 'A synthetic rectangle moves.' }] };
+    const result = mapResult(payload, 'synthetic.mov');
+    expect(result.verdict).toBe('review_required');
+    expect(result.violations[0].description).toContain('Черновик описания ИИ');
+    expect(result.violations[0].description).toContain('A synthetic rectangle moves.');
+    expect(result.violations[0].source).toBeUndefined();
+    expect(() => mapResult({ ...payload, observation_model: undefined }, 'synthetic.mov')).toThrow(INVALID_RESULT);
+  });
+  it.each([null, '', 'x'.repeat(1601), { invalid: true }])('rejects malformed GPU draft %j', observation_draft => {
+    expect(() => mapResult({ ...experimental(), observation_model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+      candidates: [{ ...experimental().candidates[0], observation_draft }] }, 'a.mov')).toThrow(INVALID_RESULT);
+  });
   it('maps real candidate evidence without inventing a legal verdict or source', () => {
     const result = mapResult(experimental(), 'a.mov');
     expect(result.experimental).toBe(true);
