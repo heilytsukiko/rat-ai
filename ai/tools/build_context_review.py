@@ -8,6 +8,7 @@ from pathlib import Path
 from compare_video_context import MODES, MODELS, nominal_refs, read_frames, tiles, build_messages, summary_for
 from compare_source_context import MODE as SOURCE_MODE, read_source_window
 from merge_auto_annotations import NAMES
+from rat_ai.hypothesis_review import make_catalog
 
 MODE_NAMES={'four_frames':'4 кадра','context16':'Больше кадров','context16_tiles':'Больше кадров + увеличенные участки'}
 MODE_NAMES[SOURCE_MODE]='16 исходных кадров + участки'
@@ -63,6 +64,7 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--source-context',type=Path)
     parser.add_argument('--source-results',type=Path)
+    parser.add_argument('--interactive',action='store_true',help='Enable local human decisions for the newest condition')
     args=parser.parse_args()
     if bool(args.source_context)!=bool(args.source_results):
         parser.error('Source context and results must be supplied together')
@@ -84,6 +86,29 @@ def main():
         if source_protocol.get('instruction_placement')=='after_images':
             mode_names[SOURCE_MODE]+=' (инструкция после кадров)'
     indexed={(r['model_key'],r['mode'],r['sample_index']):r for r in predictions}
+    review_ids={}
+    if args.interactive:
+        review_mode=SOURCE_MODE if args.source_context else 'context16_tiles'
+        review_protocol=source_protocol if args.source_context else protocol
+        proposals=[]
+        for row in predictions:
+            if row['mode']!=review_mode or not row['parsed'] or row['action'] in ('unclear','other'):
+                continue
+            sample=dataset['samples'][row['sample_index']]
+            proposals.append({'dataset_sha256':protocol['dataset_sha256'],
+                'source_context_manifest_sha256':review_protocol.get('source_context_manifest_sha256'),
+                'sample_index':row['sample_index'],'group':sample['group'],'split':sample['split'],
+                'mode':row['mode'],'model_key':row['model_key'],
+                'model':protocol['models'][row['model_key']]['model'],
+                'model_revision':protocol['models'][row['model_key']]['revision'],
+                'prompt_sha256':protocol['prompt_sha256'],
+                'instruction_placement':review_protocol.get('instruction_placement','before_images'),
+                'parser_policy':protocol.get('parser_policy','strict_v1'),
+                **{k:row[k] for k in ('action','visibility','observation','uncertainty','objects')},
+                'evidence_time_sec':row.get('evidence_time_sec',row.get('evidence_nominal_sec',[]))})
+        catalog=make_catalog(proposals)
+        review_ids={(r['model_key'],r['mode'],r['sample_index']):r['proposal_id'] for r in catalog['proposals']}
+        modes=(review_mode,*(m for m in modes if m!=review_mode))
     if args.output.exists():
         raise ValueError('Use a fresh review directory')
     args.output.mkdir(parents=True)
@@ -99,6 +124,10 @@ details{margin:20px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,m
 .gallery{display:flex;overflow-x:auto;gap:12px;padding:12px 0}figure{margin:0;flex:0 0 220px}img{width:100%;height:auto;border-radius:8px}
 figcaption,.uncertain{color:#cbd5e1;font-size:14px}.badge{border-left:3px solid #60a5fa;padding-left:10px}
 .notice{padding:16px;background:#26344d;border-radius:12px}hr{border:0;border-top:1px solid #475569;margin:24px 0}
+button,input,textarea{font:inherit}button{padding:10px 12px;border:1px solid #64748b;border-radius:7px;background:#24334c;color:#fff;cursor:pointer;margin:4px}
+button[aria-pressed="true"]{background:#2563eb;border-color:#93c5fd}button:focus-visible,textarea:focus-visible{outline:3px solid #fbbf24}
+.review-controls{border-top:1px solid #475569;padding-top:10px;margin-bottom:24px}.review-controls textarea{display:block;width:100%;box-sizing:border-box;min-height:70px;background:#111827;color:#fff;border:1px solid #64748b;border-radius:7px;padding:10px}
+.review-toolbar{position:sticky;top:0;background:#172238;z-index:2;padding:12px;border:1px solid #475569;border-radius:10px}.review-state{font-weight:600}.review-error{color:#fca5a5}
 @media(max-width:900px){.grid{grid-template-columns:1fr}body{padding:12px}}</style>
 <h1>Сравнение подробности видеоанализа</h1>
 <p class="notice">Это машинные описания, а не подтверждённая разметка или вывод о нарушении.
@@ -106,6 +135,18 @@ figcaption,.uncertain{color:#cbd5e1;font-size:14px}.badge{border-left:3px solid 
 Опорные времена не устанавливают границы события. Участки из старых уменьшенных
 кадров не восстанавливают чёткость; в варианте «исходные кадры» участки вырезаны до уменьшения.
 Страница работает локально и не отправляет кадры в интернет.</p>''']
+    if args.interactive:
+        parts[0]=parts[0].replace("default-src 'none'; img-src", "default-src 'none'; script-src 'self' file:; connect-src 'none'; img-src")
+        parts[0]=parts[0].replace('Это машинные описания, а не подтверждённая разметка или вывод о нарушении.',
+                                'Модели предлагают описания. Твои решения о них сохраняются отдельно; вывод о нарушении не присваивается.')
+        parts.append('''<section class="review-toolbar" aria-label="Проверка предположений">
+<strong>Проверь описание действия по кадрам.</strong>
+<p>Подтверждение относится к описанию действия, а не к нарушению. Если кадров недостаточно, выбери «Неясно».
+«Не подтверждаю» отклоняет предположение модели и не помечает всё видео как чистое.</p>
+<p id="review-progress" role="status"></p><p id="review-storage" role="status"></p>
+<button id="review-next">К следующему непроверенному</button><button id="review-export">Скачать мои решения</button>
+<label>Продолжить из файла <input id="review-import" type="file" accept="application/json,.json"></label>
+<p id="review-error" class="review-error" role="alert"></p></section>''')
     for target in selected:
         sample=dataset['samples'][target]
         center=sample['center_sec']
@@ -141,9 +182,26 @@ figcaption,.uncertain{color:#cbd5e1;font-size:14px}.badge{border-left:3px solid 
             for model in MODELS:
                 parts.append(f'<h3>{escape(MODELS[model])}</h3>')
                 parts.append(render_prediction(indexed[(model,mode,target)]))
+                proposal_id=review_ids.get((model,mode,target))
+                if proposal_id:
+                    parts.append(f'''<div class="review-controls" data-proposal-id="{proposal_id}">
+<p class="review-state" role="status">Не проверено</p>
+<div><button data-decision="confirmed" aria-pressed="false">Подтверждаю</button>
+<button data-decision="rejected" aria-pressed="false">Не подтверждаю</button>
+<button data-decision="unclear" aria-pressed="false">Неясно</button>
+<button data-decision="pending" aria-pressed="true">Сбросить решение</button></div>
+<label>Пояснение или исправление<textarea maxlength="2000" placeholder="Необязательно"></textarea></label>
+</div>''')
             parts.append('</section>')
         parts.append('</div></details>')
     parts.append('</html>')
+    if args.interactive:
+        (args.output/'proposals-private.json').write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding='utf-8')
+        bootstrap={'catalog_id':catalog['catalog_id'],'proposal_ids':[r['proposal_id'] for r in catalog['proposals']]}
+        data=json.dumps(bootstrap,ensure_ascii=True).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+        (args.output/'review-data.js').write_text('window.REVIEW_CATALOG='+data+';\n',encoding='utf-8')
+        (args.output/'review.js').write_text(Path(__file__).with_name('hypothesis_review.js').read_text(encoding='utf-8'),encoding='utf-8')
+        parts.insert(-1,'<script src="review-data.js"></script><script src="review.js"></script>')
     (args.output/'index.html').write_text('\n'.join(parts),encoding='utf-8')
     print(json.dumps({'written':True,'windows':len(selected),'observations':len(predictions),'private_offline':True}))
 
