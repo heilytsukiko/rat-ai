@@ -69,6 +69,14 @@ class VideoContextTests(unittest.TestCase):
             self.assertFalse(parse_context_answer(json.dumps(value),4)['parsed'])
         self.assertTrue(parse_context_answer(json.dumps(answer()),4)['parsed'])
 
+    def test_prompt_placement_preserves_images_references_and_instruction(self):
+        refs=nominal_refs(fixture(),2,16)
+        before,anchor=build_messages(refs,5,True)
+        after,new_anchor=build_messages(refs,5,True,prompt_at_end=True)
+        self.assertEqual(anchor,new_anchor)
+        self.assertEqual(after[0]['content'][-1],before[0]['content'][0])
+        self.assertEqual(after[0]['content'][:-1],before[0]['content'][1:])
+
     def test_extra_valid_references_are_retained_but_unknown_objects_abstain(self):
         value=answer()
         value['evidence_frames']=[1,2,3,4]

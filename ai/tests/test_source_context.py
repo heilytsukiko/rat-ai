@@ -1,4 +1,7 @@
 from pathlib import Path
+import copy
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -7,9 +10,41 @@ import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from prepare_source_context import letterbox
 from compare_source_context import read_source_window
+from compare_video_context import MODELS
+from build_context_review import load_source_review
 
 
 class SourceContextTests(unittest.TestCase):
+    def test_source_review_requires_matching_frames_models_and_complete_results(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:
+            root=Path(folder)
+            context={'source_dataset_sha256':'fixture','source_mapping_verified':True,
+                     'records':[{'sample_index':0}]}
+            raw=json.dumps(context).encode()
+            (root/'context.json').write_bytes(raw)
+            baseline={'dataset_sha256':'fixture','selected_windows':[0],
+                      'models':{k:{'model':v,'revision':'test'} for k,v in MODELS.items()},
+                      'prompt_sha256':'test','parser_policy':'test'}
+            protocol=copy.deepcopy(baseline)
+            protocol.update(condition='source16_tiles',source_context_manifest_sha256=hashlib.sha256(raw).hexdigest())
+            (root/'protocol-private.json').write_text(json.dumps(protocol))
+            rows=[{'model_key':key,'mode':'source16_tiles','sample_index':0,'parsed':False,
+                   'action':'unclear','visibility':'unclear','review':'unclear','objects':[],
+                   'elapsed_sec':0,'frame_count':16} for key in MODELS]
+            (root/'predictions-private.json').write_text(json.dumps({'predictions':rows}))
+            records,loaded=load_source_review(root,root,baseline)
+            self.assertEqual((len(records),len(loaded)),(1,2))
+            wrong=copy.deepcopy(baseline)
+            wrong['models']['qwen25-7b']['revision']='different'
+            with self.assertRaises(ValueError):
+                load_source_review(root,root,wrong)
+            (root/'predictions-private.json').write_text(json.dumps({'predictions':rows[:1]}))
+            with self.assertRaises(ValueError):
+                load_source_review(root,root,baseline)
+            (root/'context.json').write_bytes(raw+b' ')
+            with self.assertRaises(ValueError):
+                load_source_review(root,root,baseline)
+
     def test_portrait_keeps_aspect_ratio_and_neutral_padding(self):
         image=np.full((848,464,3),[200,20,10],dtype=np.uint8)
         result=letterbox(image)

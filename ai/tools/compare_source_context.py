@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--qwen3-config',type=Path,required=True)
     parser.add_argument('--baseline',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--prompt-at-end',action='store_true',help='Exploratory instruction placement after all images')
     args=parser.parse_args()
     os.umask(0o077)
     if args.output.exists():
@@ -81,7 +82,8 @@ def main():
         if not torch.cuda.is_available():
             raise RuntimeError('CUDA required')
         predictions=[]
-        save('protocol-private.json',dict(protocol,condition=MODE,source_context_manifest_sha256=
+        save('protocol-private.json',dict(protocol,condition=MODE,
+             instruction_placement='after_images' if args.prompt_at_end else 'before_images',source_context_manifest_sha256=
              hashlib.sha256((args.context/'context.json').read_bytes()).hexdigest()))
         for key in MODELS:
             status('loading',model=key)
@@ -107,7 +109,7 @@ def main():
                         frames,crops,times=read_source_window(args.context,record)
                         center=record['center_sec']
                     refs=[{'nominal_sec':t} for t in times]
-                    chat,_=build_messages(refs,center,True)
+                    chat,_=build_messages(refs,center,True,prompt_at_end=args.prompt_at_end)
                     text=processor.apply_chat_template(chat,tokenize=False,add_generation_prompt=True)
                     batch=processor(text=[text],images=frames+crops,return_tensors='pt').to('cuda')
                     output=model.generate(**batch,max_new_tokens=1 if target is None else 360,
@@ -130,7 +132,8 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
         baseline=json.loads((args.baseline/'summary.json').read_text())
-        summary={'schema_version':1,'experiment':'original-source-context-v1','selected_windows':len(selected),
+        summary={'schema_version':1,'experiment':'original-source-context-tail-v1' if args.prompt_at_end else 'original-source-context-v1',
+            'instruction_placement':'after_images' if args.prompt_at_end else 'before_images','selected_windows':len(selected),
             'selected_validation_videos':len({r['group'] for r in context['records']}),'models':baseline['models'],
             'comparisons':{**baseline['comparisons'],**summary_for(predictions,selected,modes=(MODE,))},
             'source_condition_elapsed_sec':round(time.monotonic()-started,1),
@@ -140,6 +143,8 @@ def main():
                 'Original-source condition changes sampling and detail together; their individual effects are not isolated.',
                 'Original-source frames are 448px with crops made before resizing and recorded decoder timestamps.',
                 'No action/object ground truth is available; agreement and visibility counts are not accuracy.']}
+        if args.prompt_at_end:
+            summary['limitations'].append('Post-hoc instruction-placement experiment on the same validation moments, not an independent accuracy test.')
         save('summary.json',summary)
         status('completed',total_tasks=len(predictions))
     except Exception as exc:

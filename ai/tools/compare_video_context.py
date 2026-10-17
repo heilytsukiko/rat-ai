@@ -114,7 +114,7 @@ def tiles(image):
     return [image.crop(box).resize((336,336),Image.Resampling.BICUBIC) for box in boxes]
 
 
-def build_messages(refs,center,with_tiles):
+def build_messages(refs,center,with_tiles,prompt_at_end=False):
     content=[{'type':'text','text':PROMPT+f'\nTarget interval: approximately {max(0,center-1.5):.2f}'
              f' to {center+1.5:.2f} seconds. The same target is used for every input variant.'}]
     for index,ref in enumerate(refs):
@@ -125,6 +125,8 @@ def build_messages(refs,center,with_tiles):
         for name in ('top-left','top-right','bottom-left','bottom-right'):
             content.extend([{'type':'text','text':f'{name} enlarged tile of frame {anchor+1}; same instant, not a new frame.'},
                             {'type':'image'}])
+    if prompt_at_end:
+        content.append(content.pop(0))
     return [{'role':'user','content':content}],anchor
 
 
