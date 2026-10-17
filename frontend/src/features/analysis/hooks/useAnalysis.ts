@@ -21,7 +21,7 @@ export function useAnalysis(service: AnalysisService = apiAnalysisService) {
     activeRequest.current?.abort();
     clearTimeout(requestTimeout.current);
     activeRequest.current = null;
-    setState({ phase: 'cancelled' });
+    setState(previous => ({ phase: 'cancelled', stage: previous.phase === 'uploading' || previous.phase === 'processing' ? previous.phase : undefined }));
   }
 
   function selectFiles(files: File[]) {
@@ -63,7 +63,7 @@ export function useAnalysis(service: AnalysisService = apiAnalysisService) {
       if (activeRequest.current !== controller) return;
       activeRequest.current = null;
       controller.abort();
-      setState({ phase: 'failed', message: 'Сервис не ответил за 5 минут. Повторите попытку.' });
+      setState(previous => ({ phase: 'failed', message: 'Сервис не ответил за 5 минут. Повторите попытку.', stage: previous.phase === 'uploading' || previous.phase === 'processing' ? previous.phase : undefined }));
     }, 300_000);
     requestTimeout.current = timeout;
     try {
@@ -79,7 +79,7 @@ export function useAnalysis(service: AnalysisService = apiAnalysisService) {
       if (activeRequest.current === controller) setState({ phase: 'done', result });
     } catch (error) {
       if (controller.signal.aborted || activeRequest.current !== controller) return;
-      setState({ phase: 'failed', message: error instanceof Error ? error.message : 'Не удалось выполнить проверку. Попробуйте ещё раз.' });
+      setState(previous => ({ phase: 'failed', message: error instanceof Error ? error.message : 'Не удалось выполнить проверку. Попробуйте ещё раз.', stage: previous.phase === 'uploading' || previous.phase === 'processing' ? previous.phase : undefined }));
     } finally {
       clearTimeout(timeout);
       if (activeRequest.current === controller) activeRequest.current = null;

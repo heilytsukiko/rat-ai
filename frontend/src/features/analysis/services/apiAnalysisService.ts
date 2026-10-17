@@ -1,4 +1,7 @@
-import type { AnalysisResult, AnalysisService } from '../model/types';
+import type { AnalysisService } from '../model/types';
+
+import { isRecord, mapResult } from './apiResult';
+export { mapResult } from './apiResult';
 
 function errorMessage(status: number): string {
   return ({ 401: 'Нет доступа к API. Проверьте ключ на сервере.', 413: 'Размер видео превышает лимит сервера.', 415: 'Сервер не поддерживает формат видео.', 422: 'Сервер отклонил видео. Проверьте файл.', 429: 'Очередь заполнена. Повторите попытку позже.' } as Record<number, string>)[status]
@@ -14,7 +17,7 @@ function upload(file: File, signal: AbortSignal, progress: (value: number) => vo
     xhr.open('POST', '/api/v1/analyze');
     xhr.responseType = 'json';
     xhr.upload.onprogress = event => {
-      if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100));
+      if (event.lengthComputable && event.total > 0 && !signal.aborted) progress(Math.min(100, Math.max(0, Math.round(event.loaded / event.total * 100))));
     };
     xhr.onloadend = () => signal.removeEventListener('abort', abort);
     xhr.onerror = () => reject(new Error('Не удалось связаться с сервером. Проверьте подключение.'));
@@ -28,7 +31,10 @@ function upload(file: File, signal: AbortSignal, progress: (value: number) => vo
     };
     const form = new FormData();
     form.append('file', file);
-    xhr.send(form);
+    try { xhr.send(form); } catch {
+      signal.removeEventListener('abort', abort);
+      reject(new Error('Не удалось отправить видео. Проверьте подключение к серверу.'));
+    }
   });
 }
 
@@ -41,45 +47,26 @@ function delay(signal: AbortSignal): Promise<void> {
   });
 }
 
-type ApiJob = {
-  job_id: string;
-  status: 'processing' | 'done' | 'failed';
-  verdict?: 'violation' | 'no_violation';
-  duration_sec?: number;
-  violations?: {
-    type: string; timecode_sec: number; description: string;
-    source?: { title: string; section?: string; url: string };
-    evidence_frames: { timestamp_sec: number; image_base64: string }[];
-  }[];
-};
-
-export function mapResult(job: ApiJob, fileName: string): AnalysisResult {
-  if (!['violation', 'no_violation'].includes(job.verdict ?? '') || !Array.isArray(job.violations)
-      || (job.verdict === 'violation') !== Boolean(job.violations.length)) {
-    throw new Error('Сервер вернул некорректный результат анализа.');
-  }
-  return {
-    jobId: job.job_id, fileName, verdict: job.verdict!, durationSec: job.duration_sec, isDemo: false,
-    violations: job.violations.map((event, index) => ({
-      id: `${job.job_id}-${index}`, type: event.type, timecodeSec: event.timecode_sec,
-      description: event.description, source: event.source,
-      evidenceFrames: event.evidence_frames.map((frame, frameIndex) => ({
-        id: `${job.job_id}-${index}-${frameIndex}`, timestampSec: frame.timestamp_sec,
-        imageUrl: `data:image/jpeg;base64,${frame.image_base64}`, alt: `Кадр: ${event.type}`,
-      })),
-    })),
-  };
-}
-
 export const apiAnalysisService: AnalysisService = {
   async analyze({ file }, { signal, onUploadProgress, onProcessing }) {
     if (!file) throw new Error('Выберите видео для проверки.');
     const jobId = await upload(file, signal, onUploadProgress);
+    signal.throwIfAborted();
     onProcessing();
     for (;;) {
-      const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, { signal, cache: 'no-store' });
+      let response: Response;
+      try {
+        response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, { signal, cache: 'no-store' });
+      } catch (error) {
+        if (signal.aborted) throw error;
+        throw new Error('Не удалось получить статус проверки. Проверьте подключение к серверу.');
+      }
       if (!response.ok) throw new Error(errorMessage(response.status));
-      const job: ApiJob = await response.json();
+      let job: unknown;
+      try { job = await response.json(); } catch {
+        throw new Error('Сервер вернул ответ в неверном формате. Проверьте подключение API.');
+      }
+      if (!isRecord(job)) throw new Error('Сервер вернул некорректный статус задачи.');
       if (job.job_id !== jobId) throw new Error('Сервер вернул другую задачу.');
       if (job.status === 'failed') throw new Error('Не удалось обработать видео. Проверьте настройки локальной модели и повторите попытку.');
       if (job.status === 'done') return mapResult(job, file.name);

@@ -81,3 +81,20 @@ describe('API analysis service', () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 });
+
+it.each([
+  ['network', new TypeError('Failed to fetch'), 'подключение'],
+  ['json', new SyntaxError('Unexpected token <'), 'неверном формате'],
+])('turns a polling %s failure into an actionable message', async (kind, error, expected) => {
+  const { options, input } = setup();
+  const fetcher = kind === 'network' ? vi.fn().mockRejectedValue(error)
+    : vi.fn().mockResolvedValue({ ok: true, json: async () => { throw error; } });
+  vi.stubGlobal('fetch', fetcher);
+  await expect(apiAnalysisService.analyze(input, options)).rejects.toThrow(expected);
+});
+
+it.each([null, [], { job_id: 'different', status: 'processing' }])('rejects malformed polling envelopes: %j', value => {
+  const { options, input } = setup();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => value }));
+  return expect(apiAnalysisService.analyze(input, options)).rejects.toThrow('Сервер вернул');
+});

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AnalysisResults } from './AnalysisResults';
 import { createMockResult } from '../mocks/results';
 import { EvidenceImage } from './EvidenceImage';
+import { ProcessingSteps } from './ProcessingSteps';
 import { FileDropzone } from './FileDropzone';
 
 describe('review and upload regressions', () => {
@@ -16,7 +17,7 @@ describe('review and upload regressions', () => {
   });
   it('shows explicit cancellation instead of an unexplained empty result', () => {
     render(<AnalysisResults state={{ phase: 'cancelled' }} onRetry={() => {}} />);
-    expect(screen.getByRole('heading', { name: 'Проверка отменена' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ожидание прекращено' })).toBeInTheDocument();
   });
   it('provides a fallback for a missing frame', () => {
     render(<EvidenceImage src="missing.jpg" alt="Кадр события" />);
@@ -34,4 +35,12 @@ describe('review and upload regressions', () => {
     fireEvent.drop(container.firstChild!, { dataTransfer: { files } });
     expect(select).not.toHaveBeenCalled();
   });
+});
+
+it('keeps completed upload marked done when polling is stopped', () => {
+  render(<ProcessingSteps state={{ phase: 'cancelled', stage: 'processing' }} />);
+  const rows = screen.getAllByRole('listitem');
+  expect(rows[0]).toHaveTextContent('Готово');
+  expect(rows[1]).toHaveTextContent('Нет статуса');
+  expect(rows[2]).toHaveTextContent('Ожидание');
 });

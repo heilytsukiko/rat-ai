@@ -51,8 +51,8 @@ export interface AnalysisService {
 export type AnalysisState =
   | { phase: 'idle' }
   | { phase: 'preview'; result: AnalysisResult }
-  | { phase: 'cancelled' }
+  | { phase: 'cancelled'; stage?: 'uploading' | 'processing' }
   | { phase: 'uploading'; progress: number }
   | { phase: 'processing' }
   | { phase: 'done'; result: AnalysisResult }
-  | { phase: 'failed'; message: string };
+  | { phase: 'failed'; message: string; stage?: 'uploading' | 'processing' };
