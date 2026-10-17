@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "experiment": "public-rule-text-reasoning-v1",
+  "data_kind": "fictional_public_rule_reasoning",
+  "train_examples": 324,
+  "challenge_examples": 36,
+  "model": "Qwen/Qwen3-VL-4B-Instruct",
+  "revision": "ebb281ec70b05090aa6165b016eac8ec08e71b17",
+  "history": [
+    {
+      "epoch": 1,
+      "mean_unweighted_loss": 0.07257426920907085
+    },
+    {
+      "epoch": 2,
+      "mean_unweighted_loss": 5.546962530601893e-05
+    }
+  ],
+  "adapter_change_l2": 2.501124227309901,
+  "trainable_parameters": 5898240,
+  "baseline": {
+    "examples": 36,
+    "exact_facts_correct": 4,
+    "exact_facts_accuracy": 0.1111111111111111,
+    "field_accuracy": 0.48148148148148145,
+    "status_correct": 20,
+    "status_accuracy": 0.5555555555555556,
+    "invalid_outputs": 0,
+    "unsupported_possible_issues": 0,
+    "unknown_fields_correct": 8,
+    "unknown_fields_total": 22,
+    "by_status": {
+      "possible_issue": {
+        "total": 6,
+        "correct": 1
+      },
+      "not_supported": {
+        "total": 17,
+        "correct": 17
+      },
+      "insufficient_evidence": {
+        "total": 13,
+        "correct": 2
+      }
+    }
+  },
+  "trained": {
+    "examples": 36,
+    "exact_facts_correct": 32,
+    "exact_facts_accuracy": 0.8888888888888888,
+    "field_accuracy": 0.9629629629629629,
+    "status_correct": 36,
+    "status_accuracy": 1.0,
+    "invalid_outputs": 0,
+    "unsupported_possible_issues": 0,
+    "unknown_fields_correct": 22,
+    "unknown_fields_total": 22,
+    "by_status": {
+      "possible_issue": {
+        "total": 6,
+        "correct": 6
+      },
+      "not_supported": {
+        "total": 17,
+        "correct": 17
+      },
+      "insufficient_evidence": {
+        "total": 13,
+        "correct": 13
+      }
+    }
+  },
+  "promoted_to_site": false,
+  "limitations": [
+    "Synthetic author-labeled examples; no human-reviewed bank action labels.",
+    "Challenge shares legal conditions with training; small language-transfer test only.",
+    "Does not measure visual recognition, legal correctness or real-world generalization."
+  ],
+  "elapsed_sec": 382.3558990070014,
+  "peak_vram_bytes": 4727386112
+}
