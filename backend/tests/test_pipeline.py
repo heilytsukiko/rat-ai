@@ -46,3 +46,18 @@ def test_invalid_model_results(monkeypatch, prediction):
     configure(monkeypatch, prediction)
     with pytest.raises(ValueError):
         pipeline.analyze(Path('test.mov'))
+
+
+def test_queue_wait_reduces_remaining_inference_budget(monkeypatch):
+    configure(monkeypatch, {'verdict': 'no_violation', 'violations': []})
+    fake_run = pipeline.subprocess.run
+    timeouts = []
+
+    def measured_run(args, **kwargs):
+        timeouts.append(kwargs['timeout'])
+        return fake_run(args, **kwargs)
+
+    monkeypatch.setattr(pipeline.subprocess, 'run', measured_run)
+    result = pipeline.analyze(Path('test.mov'), deadline=pipeline.time.monotonic() + 2)
+    assert result['verdict'] == 'no_violation'
+    assert timeouts and all(0 < timeout <= 2 for timeout in timeouts)

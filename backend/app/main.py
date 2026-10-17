@@ -3,9 +3,10 @@ import hmac
 import json
 import os
 import sqlite3
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File
@@ -18,10 +19,15 @@ API_KEY = os.getenv('API_KEY', '')
 executor = ThreadPoolExecutor(max_workers=1)
 
 
+@contextmanager
 def db():
     conn = sqlite3.connect(DATA / 'jobs.sqlite3', timeout=30)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def initialize():
@@ -30,16 +36,25 @@ def initialize():
         conn.execute('CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL, payload TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
         conn.execute("UPDATE jobs SET status='failed', payload=? WHERE status='processing'", (json.dumps({'error': 'Service restarted during analysis'}),))
 
+    # This directory is exclusively owned by this single-process service.
+    # A crash may occur between persisting a result and deleting its upload.
+    for path in DATA.glob('*.video'):
+        if len(path.stem) == 32 and all(c in '0123456789abcdef' for c in path.stem):
+            path.unlink(missing_ok=True)
+
 
 def save(job_id, status, payload):
     with db() as conn:
         conn.execute('UPDATE jobs SET status=?, payload=? WHERE id=?', (status, json.dumps(payload, ensure_ascii=False), job_id))
 
 
-def process(job_id, path):
+def process(job_id, path, deadline=None):
     try:
         from .pipeline import analyze
-        save(job_id, 'done', analyze(path))
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError('Job expired while waiting in the queue')
+        result = analyze(path, deadline=deadline) if deadline is not None else analyze(path)
+        save(job_id, 'done', result)
     except Exception:
         import logging
         logging.exception('Analysis failed for job %s', job_id)
@@ -55,8 +70,10 @@ async def lifespan(app):
         raise RuntimeError('Set API_KEY to a random secret of at least 16 characters')
     initialize()
     executor = ThreadPoolExecutor(max_workers=1)
-    yield
-    executor.shutdown(wait=True)
+    try:
+        yield
+    finally:
+        executor.shutdown(wait=True)
 
 
 app = FastAPI(title='RAT AI — local cash discipline analysis', version='0.1.0', lifespan=lifespan)
@@ -77,6 +94,7 @@ def health():
 async def submit(file: UploadFile = File(...)):
     if Path(file.filename or '').suffix.lower() not in {'.mov', '.mp4'}:
         raise HTTPException(415, 'Expected a .mov or .mp4 video')
+    deadline = time.monotonic() + 300
     job_id = uuid.uuid4().hex
     path = DATA / (job_id + '.video')
     # Reserve queue capacity atomically, including uploads currently in flight.
@@ -96,7 +114,7 @@ async def submit(file: UploadFile = File(...)):
                 target.write(chunk)
         if not size:
             raise HTTPException(422, 'Empty video')
-        executor.submit(process, job_id, path)
+        executor.submit(process, job_id, path, deadline)
     except BaseException:
         path.unlink(missing_ok=True)
         with db() as conn:

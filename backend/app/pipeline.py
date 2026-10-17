@@ -33,8 +33,9 @@ class Prediction(BaseModel):
     violations: list[Event] = Field(max_length=100)
 
 
-def analyze(video: Path):
-    deadline = time.monotonic() + min(240, max(1, int(os.getenv('ANALYSIS_TIMEOUT_SEC', '240'))))
+def analyze(video: Path, deadline: float | None = None):
+    local_deadline = time.monotonic() + min(240, max(1, int(os.getenv('ANALYSIS_TIMEOUT_SEC', '240'))))
+    deadline = min(deadline, local_deadline) if deadline is not None else local_deadline
 
     def run(args):
         remaining = deadline - time.monotonic()
