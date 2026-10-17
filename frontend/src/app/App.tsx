@@ -1,3 +1,6 @@
+import { AnalysisPage } from '../features/analysis/AnalysisPage';
+import './styles.css';
+
 export function App() {
-  return <main><h1>Проверка кассовых операций</h1></main>;
+  return <AnalysisPage />;
 }
