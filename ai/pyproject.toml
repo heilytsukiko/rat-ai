@@ -32,4 +32,4 @@ where = ["."]
 include = ["rat_ai*"]
 
 [tool.setuptools.package-data]
-rat_ai = ["artifacts/*.json", "artifacts/*.safetensors", "artifacts/*.txt", "artifacts/*.md"]
+rat_ai = ["artifacts/*.json", "artifacts/*.safetensors", "artifacts/*.txt", "artifacts/*.md", "data/*.json"]

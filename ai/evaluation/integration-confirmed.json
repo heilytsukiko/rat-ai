@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "validation_videos": 8,
+  "via_frontend_proxy": true,
+  "real_detector": true,
+  "candidate_policy": {
+    "min_windows": 2,
+    "representative": "center"
+  },
+  "jpeg_frames_checked": 13,
+  "negative_video_candidates": 7,
+  "positive_videos_with_candidates": 4,
+  "request_elapsed_sec_min": 5.73399999999674,
+  "request_elapsed_sec_max": 9.327999999979511,
+  "synthetic_request_elapsed_sec": 5.85899999999674,
+  "quality_evaluated": false
+}

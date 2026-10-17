@@ -3,8 +3,12 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from prepare_dataset import apply_review
+from rat_ai.rules import load_rules
 
 
 def build_review_page(manifest, output, review=None):
@@ -27,7 +31,8 @@ def build_review_page(manifest, output, review=None):
     data = json.dumps(records, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     # A newly imported CSV must not be overwritten by an older browser draft.
     identity = hashlib.sha256(manifest.read_bytes() + data.encode()).hexdigest()[:24]
-    page = PAGE.replace("__REVIEW_ID__", identity).replace("__REVIEW_RECORDS__", data)
+    rules = json.dumps(load_rules(), ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    page = PAGE.replace("__REVIEW_ID__", identity).replace("__RULE_CATALOG__", rules).replace("__REVIEW_RECORDS__", data)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
@@ -69,7 +74,9 @@ button.primary{background:#702741;color:white}#status{padding:10px;background:#f
 <input id="session_group" placeholder="Например: scene-01">
 <label for="event_type">Тип события — для положительных роликов</label><input id="event_type">
 <label for="observed_action">Наблюдаемое действие</label><textarea id="observed_action"></textarea>
-<label for="rule_id">Идентификатор подтверждённого правила</label><input id="rule_id">
+<label for="rule_id">Правило для проверки</label><input id="rule_id" list="known_rules" placeholder="Выберите пункт № 231 или оставьте пустым">
+<datalist id="known_rules"></datalist><p id="rule_hint" class="hint"></p>
+<a id="rule_source" target="_blank" rel="noopener noreferrer" hidden>Открыть официальный документ</a>
 <label for="review_status">Статус проверки</label><select id="review_status">
 <option value="pending">Не проверено</option><option value="needs_review">Нужно уточнить</option><option value="reviewed">Проверено</option></select>
 <p class="hint">Статус «Проверено» не подтверждает юридическую корректность ссылки автоматически.
@@ -82,6 +89,7 @@ button.primary{background:#702741;color:white}#status{padding:10px;background:#f
 <script>
 "use strict";
 const records=__REVIEW_RECORDS__;
+const catalog=__RULE_CATALOG__;
 const storageKey="rat-ai-review-__REVIEW_ID__";
 const editable=["event_type","observed_action","rule_id","session_group","review_status"];
 const fields=["video_id","label","event_time_sec",...editable];
@@ -100,12 +108,18 @@ function summary(){
   const reviewed=records.filter(r=>r.review_status==="reviewed" && complete(r)).length;
   el("status").textContent=`Группа указана: ${grouped} из ${records.length}. Проверено: ${reviewed} из ${records.length}.`;
 }
+function ruleHint(){
+  const rule=catalog.rules.find(item=>item.id===el("rule_id").value.trim());
+  el("rule_hint").textContent=rule?`${rule.section}: ${rule.summary} Условия: ${rule.required_observation} ${rule.caution}`:"Правило выбирает проверяющий после просмотра. Бинарный детектор его не устанавливает.";
+  el("rule_source").hidden=!rule;
+  if(rule)el("rule_source").href=catalog.document.url;
+}
 function save(){
   const row=records[index];
   for(const key of editable)row[key]=el(key).value.trim();
   el("error").textContent=row.review_status==="reviewed" && !complete(row)?"Для статуса «Проверено» заполните группу, а для положительного ролика — тип, действие и правило.":"";
   try{localStorage.setItem(storageKey,JSON.stringify(records.map(({video_url,...rest})=>rest)));}catch{}
-  summary();
+  summary();ruleHint();
 }
 function show(){
   const row=records[index];
@@ -115,10 +129,12 @@ function show(){
   el("sourceInfo").textContent=`${row.video_id}: ${row.label?"нарушение":"без нарушения"}; исходный таймкод: ${row.event_time_sec??"нет"}`;
   el("seek").disabled=row.event_time_sec===null || row.event_time_sec==="";
   el("previous").disabled=index===0;el("next").disabled=index===records.length-1;
-  el("error").textContent="";summary();
+  el("error").textContent="";summary();ruleHint();
 }
+for(const rule of catalog.rules){const option=document.createElement("option");option.value=rule.id;option.textContent=`${rule.section} · ${rule.event_type}`;el("known_rules").append(option);}
 for(const [i,row] of records.entries()){const option=document.createElement("option");option.value=String(i);option.textContent=row.video_id;el("selector").append(option);}
 for(const key of editable)el(key).addEventListener("input",save);
+el("rule_id").addEventListener("change",()=>{const rule=catalog.rules.find(item=>item.id===el("rule_id").value.trim());if(rule && !el("event_type").value.trim())el("event_type").value=rule.event_type;save();});
 el("selector").addEventListener("change",event=>{save();index=Number(event.target.value);show();});
 el("previous").onclick=()=>{save();index--;show();};el("next").onclick=()=>{save();index++;show();};
 el("seek").onclick=()=>{el("video").currentTime=Number(records[index].event_time_sec);};

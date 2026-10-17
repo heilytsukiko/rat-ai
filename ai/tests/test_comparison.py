@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from compare_detectors import compare_reports
+from compare_detectors import compare_reports, localization_metrics
 from train_detector import binary_metrics
 
 
@@ -18,6 +18,40 @@ def report(scores):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_classification_improvement_cannot_conceal_worse_candidate_timestamps(self):
+        baseline, candidate = report([.9, .9, .9, .9]), report([.1, .9, .9, .9])
+        for fixture in (baseline, candidate):
+            for row in fixture["validation_video_results"]:
+                row["scan_times_sec"] = [.5, 2.5, 4.5]
+                row["scan_scores"] = [.1, row["video_score"], .1]
+                row["annotated_event_times_sec"] = [2.5] if row["label"] else []
+        good = compare_reports(baseline, candidate)
+        self.assertTrue(good["candidate_eligible_for_packaging"])
+        for row in candidate["validation_video_results"]:
+            if row["label"]:
+                row["scan_scores"] = [row["video_score"], .1, .1]
+                row["annotated_event_times_sec"] = [4.5]
+        # Keep labels identical, but move the emitted candidate away from the point.
+        for row in baseline["validation_video_results"]:
+            if row["label"]:
+                row["scan_scores"] = [.1, .1, row["video_score"]]
+                row["annotated_event_times_sec"] = [4.5]
+        worse = compare_reports(baseline, candidate)
+        self.assertTrue(worse["false_alarms_reduced_without_more_misses"])
+        self.assertFalse(worse["candidate_eligible_for_packaging"])
+        self.assertEqual(worse["candidate_localization"]["matched_points"], 0)
+
+    def test_one_candidate_peak_cannot_match_two_annotations_or_hidden_positive_windows(self):
+        row = {"label": 1, "scan_times_sec": [.5, 2.5, 4.5, 6.5],
+               "scan_scores": [.8, .9, .8, .1], "annotated_event_times_sec": [1.5, 3.5]}
+        metrics = localization_metrics([row], .5)
+        self.assertEqual(metrics["matched_points"], 1)
+        self.assertEqual(metrics["point_recall"], .5)
+        # A threshold-crossing window near a point does not count if its group peak is far away.
+        row["scan_scores"] = [.6, .7, .9, .1]
+        row["annotated_event_times_sec"] = [.5]
+        self.assertEqual(localization_metrics([row], .5)["matched_points"], 0)
+
     def test_fewer_false_alarms_cannot_hide_more_misses(self):
         baseline = report([0.9, 0.9, 0.9, 0.9])
         improved = compare_reports(baseline, report([0.1, 0.9, 0.9, 0.9]))

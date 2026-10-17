@@ -67,16 +67,39 @@ def training_samples(videos, dense_negative_stride=None, dense_validation=False)
     return samples
 
 
+def mil_samples(videos):
+    """Full uniform bags; annotated auxiliary windows belong to training only."""
+    import numpy as np
+    samples = []
+    for row in videos:
+        centers = np.arange(min(0.5, row["duration_sec"] / 2), row["duration_sec"], 2).tolist()
+        specs = [(center, True, False) for center in centers]
+        if row["split"] == "train" and row["label"]:
+            specs.extend((point, False, True) for point in row["event_times_sec"])
+        for center, scan_window, point_supervised in specs:
+            samples.append({"video_id": row["video_id"], "sha256": row["sha256"],
+                            "video_path": row["video_path"], "duration_sec": row["duration_sec"],
+                            "center_sec": center, "label": row["label"], "split": row["split"],
+                            "scan_window": scan_window, "point_supervised": point_supervised})
+    return samples
+
+
 def video_groups(samples, split):
     """One contribution per unique video, independent of duration/window count."""
     groups = {}
     for index, sample in enumerate(samples):
         if sample["split"] != split:
             continue
-        group = groups.setdefault(sample["sha256"], {"label": sample["label"], "indices": []})
+        group = groups.setdefault(sample["sha256"], {"label": sample["label"], "indices": [],
+                                                     "scan_positions": [], "point_positions": []})
         if group["label"] != sample["label"]:
             raise ValueError("Conflicting video labels")
+        position = len(group["indices"])
         group["indices"].append(index)
+        if sample.get("scan_window", True):
+            group["scan_positions"].append(position)
+        if sample.get("point_supervised", False):
+            group["point_positions"].append(position)
     if {g["label"] for g in groups.values()} != {0, 1}:
         raise ValueError("Both video classes are required")
     return list(groups.values())
@@ -90,10 +113,34 @@ def video_loss(logits, label):
     return losses.mean() if label else 0.75 * losses.max() + 0.25 * losses.mean()
 
 
-def balanced_video_loss(model, features, groups):
+def mil_video_loss(logits, label, scan_positions=None, point_positions=()):
+    """Match max-window inference, plus a fixed 0.25 training-point auxiliary loss.
+
+    A positive bag does not assign a positive label to every background window.
+    Annotated auxiliary windows are excluded from the bag's deployment scan.
+    """
+    import torch.nn.functional as F
+    scanned = logits if scan_positions is None else logits[scan_positions]
+    if not len(scanned):
+        raise ValueError("MIL video requires at least one uniform scan window")
+    peak = scanned.max()
+    loss = F.binary_cross_entropy_with_logits(peak, peak.new_tensor(float(label)))
+    if label and len(point_positions):
+        loss = loss + 0.25 * F.softplus(-logits[list(point_positions)]).mean()
+    return loss
+
+
+def group_loss(model, features, group, objective):
+    logits = model.forward_cached(features[group["indices"]])
+    if objective == "mil-video":
+        return mil_video_loss(logits, group["label"], group["scan_positions"], group["point_positions"])
+    return video_loss(logits, group["label"])
+
+
+def balanced_video_loss(model, features, groups, objective="hard-negative-video"):
     import torch
     # Weight each class equally, then each video equally within its class.
-    losses = [video_loss(model.forward_cached(features[g["indices"]]), g["label"]) for g in groups]
+    losses = [group_loss(model, features, g, objective) for g in groups]
     return torch.stack([torch.stack([loss for loss, group in zip(losses, groups)
                                      if group["label"] == label]).mean() for label in (0, 1)]).mean()
 
@@ -111,6 +158,29 @@ def binary_metrics(labels, scores, threshold=0.5):
             "threshold": threshold}
 
 
+def cached_video_metrics(model, features, groups, threshold=0.5):
+    """Diagnostic uniform-scan metrics; never include auxiliary annotation clips."""
+    import torch
+    import torch.nn.functional as F
+    scores, labels, losses = [], [], []
+    with torch.inference_mode():
+        for group in groups:
+            selected = [group["indices"][position] for position in group["scan_positions"]]
+            logits = model.forward_cached(features[selected].float())
+            peak = logits.max()
+            labels.append(group["label"])
+            scores.append(float(peak.sigmoid()))
+            losses.append(float(F.binary_cross_entropy_with_logits(peak, peak.new_tensor(float(group["label"])))))
+    metrics = binary_metrics(labels, scores, threshold)
+    positive = [score for score, label in zip(scores, labels) if label]
+    negative = [score for score, label in zip(scores, labels) if not label]
+    metrics["roc_auc"] = sum((p > n) + .5 * (p == n) for p in positive for n in negative) / (
+        len(positive) * len(negative))
+    balanced_loss = sum(sum(loss for loss, y in zip(losses, labels) if y == label) / labels.count(label)
+                        for label in (0, 1)) / 2
+    return metrics, balanced_loss
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=Path("ai/local/dataset/manifest.jsonl"))
@@ -119,7 +189,8 @@ def main():
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--dense-negative-stride-sec", type=float)
     parser.add_argument("--warm-start", type=Path)
-    parser.add_argument("--objective", choices=("window", "hard-negative-video"), default="window")
+    parser.add_argument("--objective", choices=("window", "hard-negative-video", "mil-video"), default="window")
+    parser.add_argument("--backbone", choices=("mobilenet", "ssdlite-coco"), default="mobilenet")
     args = parser.parse_args()
     if not 1 <= args.epochs <= 100 or not 1 <= args.threads <= 8:
         parser.error("epochs must be 1–100 and threads 1–8")
@@ -136,13 +207,22 @@ def main():
     from rat_ai.temporal import TemporalDetector
     from rat_ai.video import clip_tensor
     from rat_ai.inference import score_video
+    architecture = "mobilenet_v3_small_temporal_v1"
+    model_class = TemporalDetector
+    weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+    if args.backbone == "ssdlite-coco":
+        from torchvision.models.detection import SSDLite320_MobileNet_V3_Large_Weights
+        from rat_ai.semantic import SemanticTemporalDetector
+        weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+        model_class = SemanticTemporalDetector
+        architecture = "ssdlite_coco_temporal_v1"
 
     if psutil.virtual_memory().available < 1024 ** 3:
         raise RuntimeError("Need at least 1 GiB available RAM for this small CPU training run")
     args.output.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     state = {"status": "running", "stage": "preparing", "training_started": False,
-             "model": "MobileNetV3 Small temporal detector", "qwen_weights_modified": False}
+             "model": architecture, "qwen_weights_modified": False}
 
     def update(**fields):
         state.update(fields)
@@ -159,20 +239,19 @@ def main():
     try:
         update(stage="downloading_pretrained_backbone")
         pretrained_dir = args.output.parent / "pretrained"
-        weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
         base_state = torch.hub.load_state_dict_from_url(
             weights.url, model_dir=str(pretrained_dir), map_location="cpu",
             check_hash=True, weights_only=True)
         weight_path = pretrained_dir / Path(weights.url).name
         with weight_path.open("rb") as stream:
             weights_sha = hashlib.file_digest(stream, "sha256").hexdigest()
-        model = TemporalDetector()
+        model = model_class()
         model.load_pretrained_backbone(base_state)
         del base_state
         warm_start_sha = None
         if args.warm_start:
             payload = torch.load(args.warm_start, map_location="cpu", weights_only=True)
-            if payload["config"]["architecture"] != "mobilenet_v3_small_temporal_v1":
+            if payload["config"]["architecture"] != architecture:
                 raise ValueError("Incompatible warm-start model")
             model.load_state_dict(payload["state_dict"], strict=True)
             with args.warm_start.open("rb") as stream:
@@ -185,9 +264,10 @@ def main():
             with Path(row["video_path"]).open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != row["sha256"]:
                     raise ValueError("A dataset file changed since manifest preparation")
-        samples = training_samples(videos, args.dense_negative_stride_sec,
-                                   dense_validation=args.objective == "hard-negative-video")
-        config = {"architecture": "mobilenet_v3_small_temporal_v1", "input_size": 224,
+        samples = (mil_samples(videos) if args.objective == "mil-video" else
+                   training_samples(videos, args.dense_negative_stride_sec,
+                                    dense_validation=args.objective == "hard-negative-video"))
+        config = {"architecture": architecture, "input_size": getattr(model, "input_size", 224),
                   "frames_per_clip": 3, "clip_span_sec": 2, "seed": 42,
                   "pretrained_url": weights.url, "pretrained_sha256": weights_sha,
                   "torch": str(torch.__version__), "torchvision": str(torchvision.__version__),
@@ -196,6 +276,7 @@ def main():
                   "sample_spec": samples, "validation_scan_stride_sec": 2.0,
                   "threshold": 0.5}
         config["objective"] = args.objective
+        config["trainable_tail_kind"] = "object_feature_projection" if args.backbone == "ssdlite-coco" else "visual_convolution"
         config["warm_start_sha256"] = warm_start_sha
         config["dense_training_negative_stride_sec"] = args.dense_negative_stride_sec
         signature = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
@@ -209,7 +290,7 @@ def main():
             features_list = []
             with torch.inference_mode():
                 for i, sample in enumerate(samples):
-                    clip, _ = clip_tensor(sample["video_path"], sample["center_sec"], sample["duration_sec"])
+                    clip, _ = clip_tensor(sample["video_path"], sample["center_sec"], sample["duration_sec"], size=config["input_size"])
                     features_list.append(model.prefix(clip).half())
                     if (i + 1) % 10 == 0 or i + 1 == len(samples):
                         update(samples_cached=i + 1)
@@ -230,7 +311,7 @@ def main():
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         update(stage="training", training_started=True, trainable_parameters=trainable)
         optimizer = torch.optim.AdamW([
-            {"params": model.tail.parameters(), "lr": 0.0001},
+            {"params": model.tail.parameters(), "lr": 0.001 if args.backbone == "ssdlite-coco" else 0.0001},
             {"params": model.head.parameters(), "lr": 0.003}], weight_decay=0.01)
         train_y = labels[train_index]
         pos_weight = (len(train_y) - train_y.sum()) / train_y.sum()
@@ -239,7 +320,7 @@ def main():
         for epoch in range(1, args.epochs + 1):
             model.train()
             losses = []
-            if args.objective == "hard-negative-video":
+            if args.objective in {"hard-negative-video", "mil-video"}:
                 # Accumulate a video at a time to bound memory even for long clips.
                 # Balanced class weights use all videos and never oversample validation.
                 order = torch.randperm(len(train_groups)).tolist()
@@ -249,7 +330,7 @@ def main():
                     batch = order[start:start + 4]
                     for index in batch:
                         group = train_groups[index]
-                        loss = video_loss(model.forward_cached(features[group["indices"]]), group["label"])
+                        loss = group_loss(model, features, group, args.objective)
                         weight = len(train_groups) / (2 * counts[group["label"]] * len(batch))
                         (loss * weight).backward()
                         losses.append((float(loss.detach()) * len(train_groups) / (2 * counts[group["label"]]), 1))
@@ -267,8 +348,8 @@ def main():
                     losses.append((float(loss.detach()), len(indices)))
             model.eval()
             with torch.inference_mode():
-                if args.objective == "hard-negative-video":
-                    val_loss = float(balanced_video_loss(model, features, val_groups))
+                if args.objective in {"hard-negative-video", "mil-video"}:
+                    val_loss = float(balanced_video_loss(model, features, val_groups, args.objective))
                 else:
                     val_logits = model.forward_cached(features[val_index])
                     val_losses = F.binary_cross_entropy_with_logits(val_logits, labels[val_index], reduction="none")
@@ -276,6 +357,10 @@ def main():
                     val_loss = float((val_losses[val_y == 0].mean() + val_losses[val_y == 1].mean()) / 2)
             entry = {"epoch": epoch, "train_loss": sum(x * n for x, n in losses) / sum(n for _, n in losses),
                      "validation_balanced_loss": val_loss}
+            if args.objective == "mil-video":
+                entry["train_video_metrics"], entry["train_video_balanced_loss"] = cached_video_metrics(
+                    model, features, train_groups)
+                entry["validation_video_metrics"], _ = cached_video_metrics(model, features, val_groups)
             history.append(entry)
             if val_loss < best_loss:
                 best_loss, best_epoch = val_loss, epoch
@@ -323,8 +408,12 @@ def main():
                             "Related filming sessions are not yet grouped; exact copies are grouped.",
                             "Positive labels are point annotations; category and event duration unknown.",
                             "Binary detector only; no legal source or violation type classification.",
-                            "Qwen was not fine-tuned; MobileNet tail and temporal head were trained.",
-                            "Checkpoint selected using supervised validation windows; metrics are validation, not test."]}
+                            ("Qwen and the COCO object detector were not fine-tuned; temporal projection and classifier were trained."
+                             if args.backbone == "ssdlite-coco" else
+                             "Qwen was not fine-tuned; MobileNet tail and temporal head were trained."),
+                            ("Checkpoint selected by full-video validation loss; point annotations used only for training auxiliary windows and final localization metrics."
+                             if args.objective == "mil-video" else
+                             "Checkpoint selected using supervised validation windows; metrics are validation, not test.")]}
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         (args.output / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
         update(status="done", stage="complete", best_epoch=best_epoch,

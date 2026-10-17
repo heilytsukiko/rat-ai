@@ -32,13 +32,15 @@ class PublicPackageTests(unittest.TestCase):
                           "pretrained_sha256": "test", "sample_spec": [
                               {"video_path": "PRIVATE_PATH_SENTINEL", "event_time_sec": 123}]}
         torch.save({"state_dict": model.state_dict(), "config": private_config, "epoch": 6}, source)
-        exported = export_checkpoint(source, output)
+        policy = {"min_windows": 2, "representative": "center"}
+        exported = export_checkpoint(source, output, candidate_policy=policy)
         serialized = output.with_suffix(".json").read_text(encoding="utf-8")
         for private_key in ("PRIVATE_PATH_SENTINEL", "sample_spec", "event_time_sec", "video_path"):
             self.assertNotIn(private_key, serialized)
         with safe_open(output, framework="pt", device="cpu") as tensors:
             self.assertEqual(set(tensors.metadata()), {"architecture", "format"})
-        restored, _ = load_detector(output)
+        restored, restored_config = load_detector(output)
+        self.assertEqual(restored_config['candidate_policy'], policy)
         for key, value in model.state_dict().items():
             self.assertTrue(torch.equal(value, restored.state_dict()[key]))
         self.assertEqual(exported["best_epoch"], 6)

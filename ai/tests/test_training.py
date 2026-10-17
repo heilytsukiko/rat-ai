@@ -5,11 +5,22 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from train_detector import binary_metrics, training_samples, unique_videos, video_groups, video_loss, balanced_video_loss
+from train_detector import (binary_metrics, training_samples, unique_videos, video_groups,
+                            video_loss, balanced_video_loss, mil_samples, mil_video_loss, cached_video_metrics)
 from rat_ai.inference import candidate_events
 
 
 class TrainingDataTests(unittest.TestCase):
+    def test_mil_validation_inputs_ignore_event_timestamps_and_training_auxiliary_is_separate(self):
+        row = {"video_id": "X-1", "sha256": "a", "video_path": "a.mov", "duration_sec": 8,
+               "label": 1, "split": "validation", "event_times_sec": [3]}
+        samples = mil_samples([row])
+        self.assertEqual(samples, mil_samples([{**row, "event_times_sec": [7]}]))
+        self.assertEqual([s["center_sec"] for s in samples], [.5, 2.5, 4.5, 6.5])
+        self.assertFalse(any(s["point_supervised"] for s in samples))
+        train = mil_samples([{**row, "split": "train"}])
+        self.assertEqual([s["center_sec"] for s in train if s["point_supervised"]], [3])
+        self.assertTrue(all(not s["scan_window"] for s in train if s["point_supervised"]))
     def test_copies_share_all_annotations_and_cannot_cross_splits(self):
         a = {"sha256": "a", "label": 1, "split": "train", "event_time_sec": 57}
         b = {**a, "event_time_sec": 68}
@@ -64,6 +75,39 @@ class TrainingDataTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "Requires CPU training dependencies")
 class FineTuningTests(unittest.TestCase):
+    def test_diagnostic_scores_exclude_high_auxiliary_annotation_logits(self):
+        import torch
+        class Scores:
+            def forward_cached(self, features):
+                return features
+        groups = [{"label": 0, "indices": [0, 1, 2], "scan_positions": [0, 1]},
+                  {"label": 1, "indices": [3, 4], "scan_positions": [0]}]
+        metrics, loss = cached_video_metrics(Scores(), torch.tensor([-2.0, -1.0, 10.0, 2.0, -10.0]), groups)
+        self.assertEqual([metrics[k] for k in ("tp", "tn", "fp", "fn")], [1, 1, 0, 0])
+        self.assertEqual(metrics["roc_auc"], 1)
+        self.assertGreater(loss, 0)
+
+    def test_mil_gradient_uses_peak_and_known_points_without_labeling_all_positive_windows(self):
+        import torch
+        logits = torch.tensor([-3.0, 1.0, -2.0], requires_grad=True)
+        mil_video_loss(logits, 1, [0, 1], [2]).backward()
+        self.assertEqual(float(logits.grad[0]), 0)
+        self.assertLess(float(logits.grad[1]), 0)
+        self.assertLess(float(logits.grad[2]), 0)
+        negative = torch.tensor([-3.0, 1.0], requires_grad=True)
+        mil_video_loss(negative, 0).backward()
+        self.assertEqual(float(negative.grad[0]), 0)
+        self.assertGreater(float(negative.grad[1]), 0)
+        with self.assertRaises(ValueError):
+            mil_video_loss(negative, 0, [])
+
+    def test_mil_validation_matches_deployment_peak_binary_loss(self):
+        import torch
+        logits = torch.tensor([-.3, 1.7, .2])
+        for label in (0, 1):
+            expected = torch.nn.functional.binary_cross_entropy(logits.sigmoid().max(), torch.tensor(float(label)))
+            self.assertAlmostEqual(float(mil_video_loss(logits, label)), float(expected), places=6)
+
     def test_hard_negative_loss_targets_false_alarm_and_pushes_scores_down(self):
         import torch
         logits = torch.tensor([-4.0, -4.0, 3.0], requires_grad=True)

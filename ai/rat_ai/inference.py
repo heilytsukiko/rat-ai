@@ -18,9 +18,14 @@ def load_detector(checkpoint=None):
         payload = {"config": config, "state_dict": load_file(str(checkpoint), device="cpu")}
     else:
         payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    if payload["config"]["architecture"] != "mobilenet_v3_small_temporal_v1":
+    architecture = payload["config"]["architecture"]
+    if architecture == "ssdlite_coco_temporal_v1":
+        from .semantic import SemanticTemporalDetector
+        model = SemanticTemporalDetector()
+    elif architecture == "mobilenet_v3_small_temporal_v1":
+        model = TemporalDetector()
+    else:
         raise ValueError("Unsupported detector checkpoint")
-    model = TemporalDetector()
     model.load_state_dict(payload["state_dict"], strict=True)
     model.eval()
     return model, payload["config"]
@@ -37,10 +42,12 @@ class VideoDetector:
 
     def analyze_video(self, path, stride_sec=2, threshold=None):
         chosen_threshold = self.config["threshold"] if threshold is None else threshold
+        policy = validate_candidate_policy(self.config.get("candidate_policy"))
         # Validate before decoding a potentially long video.
-        candidate_events({"scan_times_sec": [], "scan_scores": []}, chosen_threshold, stride_sec)
+        candidate_events({"scan_times_sec": [], "scan_scores": []}, chosen_threshold, stride_sec, **policy)
         scored = score_video(self.model, path, stride_sec=stride_sec)
-        return {**scored, "candidates": candidate_events(scored, chosen_threshold, stride_sec),
+        return {**scored, "candidates": candidate_events(scored, chosen_threshold, stride_sec, **policy),
+                "candidate_policy": policy,
                 "threshold": chosen_threshold, "experimental": True,
                 "model": self.config["architecture"]}
 
@@ -71,7 +78,7 @@ def score_video(model, path, duration_sec=None, stride_sec=2):
     model.eval()
     with torch.inference_mode():
         for center in centers:
-            clip, actual_time = clip_tensor(str(path), center, duration_sec)
+            clip, actual_time = clip_tensor(str(path), center, duration_sec, size=getattr(model, "input_size", 224))
             scores.append(float(model(clip[None]).sigmoid()[0]))
             times.append(actual_time)
     peak = int(np.argmax(scores))
@@ -80,11 +87,23 @@ def score_video(model, path, duration_sec=None, stride_sec=2):
             "processing_sec": time.perf_counter() - started}
 
 
-def candidate_events(scored, threshold=0.5, stride_sec=2):
+def validate_candidate_policy(policy=None):
+    policy = {} if policy is None else policy
+    if not isinstance(policy, dict) or set(policy) - {"min_windows", "representative"}:
+        raise ValueError("Invalid candidate policy")
+    minimum, representative = policy.get("min_windows", 1), policy.get("representative", "peak")
+    if (type(minimum) is not int or not 1 <= minimum <= 10
+        or not isinstance(representative, str) or representative not in {"peak", "center"}):
+        raise ValueError("Invalid candidate policy")
+    return {"min_windows": minimum, "representative": representative}
+
+
+def candidate_events(scored, threshold=0.5, stride_sec=2, min_windows=1, representative="peak"):
     """Merge consecutive positive windows; these are statistical review candidates."""
     import math
     if not math.isfinite(threshold) or not 0 <= threshold <= 1:
         raise ValueError("Threshold must be in [0, 1]")
+    validate_candidate_policy({"min_windows": min_windows, "representative": representative})
     groups, current = [], []
     for timestamp, score in zip(scored["scan_times_sec"], scored["scan_scores"]):
         if score >= threshold:
@@ -99,7 +118,13 @@ def candidate_events(scored, threshold=0.5, stride_sec=2):
         groups.append(current)
     result = []
     for group in groups:
-        timestamp, score = max(group, key=lambda pair: pair[1])
+        if len(group) < min_windows:
+            continue
+        if representative == "peak":
+            timestamp, score = max(group, key=lambda pair: pair[1])
+        else:
+            center = sum(t for t, _ in group) / len(group)
+            timestamp, score = min(group, key=lambda pair: abs(pair[0] - center))
         result.append({"timecode_sec": timestamp, "score": score,
                        "first_scored_time_sec": group[0][0], "last_scored_time_sec": group[-1][0]})
     return result

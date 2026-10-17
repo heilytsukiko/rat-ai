@@ -74,6 +74,7 @@ def smoke(url, video, output):
             frames += 1
     report = {'status': 'passed', 'real_detector': True, 'via_frontend_proxy': True,
               'analysis_mode': result['analysis_mode'], 'duration_sec': duration,
+              'candidate_policy': result.get('candidate_policy'),
               'candidates': len(result['candidates']), 'jpeg_frames_checked': frames,
               'elapsed_sec': time.monotonic() - started,
               'quality_evaluated': False}

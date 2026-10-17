@@ -18,12 +18,14 @@ def main():
     args = parser.parse_args()
     started = time.perf_counter()
     import torch
-    from rat_ai.inference import candidate_events, load_detector, score_video
+    from rat_ai.inference import candidate_events, load_detector, score_video, validate_candidate_policy
     torch.set_num_threads(4)
-    model, _ = load_detector(args.checkpoint)
+    model, config = load_detector(args.checkpoint)
+    policy = validate_candidate_policy(config.get("candidate_policy"))
     scored = score_video(model, args.video)
-    result = {**scored, "experimental": True, "candidates": candidate_events(scored, args.threshold),
-              "threshold": args.threshold, "model": "mobilenet_v3_small_temporal_v1",
+    result = {**scored, "experimental": True, "candidate_policy": policy,
+              "candidates": candidate_events(scored, args.threshold, **policy),
+              "threshold": args.threshold, "model": config["architecture"],
               "total_elapsed_sec": time.perf_counter() - started,
               "note": "Binary statistical candidates; event types and legal sources are not assigned."}
     args.output.parent.mkdir(parents=True, exist_ok=True)

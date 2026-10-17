@@ -12,15 +12,21 @@ from the second 15-epoch run. Base torchvision weights:
 https://download.pytorch.org/models/mobilenet_v3_small-047dcff4.pth
 
 Validation used eight videos, with exact duplicate files kept in one split.
-At threshold 0.5: TP=4, TN=0, FP=4, FN=0, accuracy=0.50, precision=0.50,
-recall=1.00. Every validation video triggered a detection. The weights are
+With raw maxima at threshold 0.5: TP=4, TN=0, FP=4, FN=0.
+The published manifest now requires two consecutive positive scan windows and
+selects the window nearest the group's mean time, using that window's score.
+At scan stride 2 seconds: TP=4, TN=1, FP=3, FN=0, accuracy=0.625;
+negative-video candidates decreased from 17 to 7, and point matches stayed
+at 3/4 within two seconds. This is postprocessing; numeric weights are unchanged.
+Short events can be filtered out. The policy was selected on this same repeatedly
+used validation set; no independent test set exists. The weights are
 an experimental collaboration baseline, not a reliable violation detector.
 They do not assign event types or regulatory sources. Qwen is a separate,
 unfinished experiment and was not fine-tuned.
 
 Full-video ROC AUC for v2 on this repeatedly used validation set is 0.0.
-A third training experiment reduced false alarms but missed every positive
-video; it was not promoted. See `../../EXPERIMENTS.md` for the comparison.
+Training experiments v3–v5 were not promoted because they increased misses.
+See `../../EXPERIMENTS.md` and `../../evaluation/v2-confirmed.json`.
 
 Source attribution and license: `TORCHVISION-LICENSE.txt`. This directory does
 not grant any additional rights over the hackathon source dataset. Keep source

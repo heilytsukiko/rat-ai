@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "validation_videos": 8,
+  "baseline": {
+    "tp": 4,
+    "tn": 0,
+    "fp": 4,
+    "fn": 0,
+    "accuracy": 0.5,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1": 0.6666666666666666,
+    "threshold": 0.5,
+    "roc_auc": 0.0
+  },
+  "candidate": {
+    "tp": 3,
+    "tn": 1,
+    "fp": 3,
+    "fn": 1,
+    "accuracy": 0.5,
+    "precision": 0.5,
+    "recall": 0.75,
+    "f1": 0.6,
+    "threshold": 0.5,
+    "roc_auc": 0.25
+  },
+  "false_alarms_reduced_without_more_misses": false,
+  "baseline_localization": {
+    "tolerance_sec": 2,
+    "annotated_points": 4,
+    "matched_points": 3,
+    "point_recall": 0.75,
+    "negative_video_candidates": 17
+  },
+  "candidate_localization": {
+    "tolerance_sec": 2,
+    "annotated_points": 4,
+    "matched_points": 2,
+    "point_recall": 0.5,
+    "negative_video_candidates": 15
+  },
+  "candidate_eligible_for_packaging": false,
+  "limitations": [
+    "Repeatedly used validation set; no independent test set.",
+    "Point proximity does not verify action type, event duration or legal meaning.",
+    "Exact copies grouped; related filming sessions may cross splits.",
+    "Binary candidates do not establish a violation type or legal source."
+  ]
+}

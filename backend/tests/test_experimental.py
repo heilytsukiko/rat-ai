@@ -18,8 +18,9 @@ def raw():
                             'first_scored_time_sec': 2.5, 'last_scored_time_sec': 2.5}]}
 
 
-def test_real_pipeline_experimental_mode_extracts_evidence_without_legal_verdict(monkeypatch):
-    configure(monkeypatch, raw())
+@pytest.mark.parametrize('architecture', ['mobilenet_v3_small_temporal_v1', 'ssdlite_coco_temporal_v1'])
+def test_real_pipeline_experimental_mode_extracts_evidence_without_legal_verdict(monkeypatch, architecture):
+    configure(monkeypatch, {**raw(), 'model': architecture})
     monkeypatch.setenv('ANALYSIS_MODE', 'experimental')
     result = pipeline.analyze(Path('test.mov'))
     assert result['analysis_mode'] == 'experimental'
@@ -42,6 +43,36 @@ def test_empty_experimental_result_does_not_become_no_violation():
     result = adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('No frame expected'))
     assert result['candidates'] == []
     assert 'verdict' not in result
+
+
+def test_confirmation_filters_a_high_isolated_peak_without_a_legal_verdict():
+    prediction = raw()
+    prediction.update(candidate_policy={'min_windows': 2, 'representative': 'center'}, candidates=[])
+    result = adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('Filtered spike'))
+    assert result['video_score'] == .8 and result['candidates'] == []
+    assert 'verdict' not in result
+
+
+def test_center_policy_extracts_the_center_frame_with_its_actual_score():
+    prediction = raw()
+    prediction.update(video_score=.9, peak_time_sec=.5, scan_scores=[.9, .6, .7],
+                      candidate_policy={'min_windows': 2, 'representative': 'center'},
+                      candidates=[{'timecode_sec': 2.5, 'score': .6,
+                                   'first_scored_time_sec': .5, 'last_scored_time_sec': 4.5}])
+    result = adapt_prediction(json.dumps(prediction), 20, lambda t: {'timestamp_sec': t})
+    assert result['candidates'][0]['score'] == .6
+    assert result['candidates'][0]['evidence_frames'][0]['timestamp_sec'] == 2.5
+    prediction['candidates'][0].update(timecode_sec=.5, score=.9)
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('Wrong representative'))
+
+
+@pytest.mark.parametrize('policy', [{'min_windows': True}, {'min_windows': 0},
+                                   {'representative': 'invented'}, {'unknown': 1}])
+def test_invalid_confirmation_policy_is_rejected(policy):
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps({**raw(), 'candidate_policy': policy}), 20,
+                         lambda _: pytest.fail('Invalid policy'))
 
 
 @pytest.mark.parametrize('change', [
