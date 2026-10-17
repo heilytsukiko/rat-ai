@@ -13,13 +13,13 @@ describe('useAnalysis', () => {
     expect(result.current.fileError).toContain('Сначала выберите');
   });
 
-  it('clears the old result when selecting a file and rejects invalid replacements', () => {
+  it('preserves the valid file when a replacement is invalid', () => {
     const { result } = renderHook(() => useAnalysis());
     act(() => result.current.selectFile(new File(['video'], 'valid.mov')));
     expect(result.current.state.phase).toBe('idle');
     expect(result.current.file?.name).toBe('valid.mov');
     act(() => result.current.selectFile(new File(['video'], 'wrong.mp4')));
-    expect(result.current.file).toBeNull();
+    expect(result.current.file?.name).toBe('valid.mov');
     expect(result.current.fileError).toContain('.mov');
   });
 
@@ -37,6 +37,6 @@ describe('useAnalysis', () => {
     act(() => result.current.cancel());
     expect(signal?.aborted).toBe(true);
     await act(async () => { finish(createMockResult('violation')); await pending; });
-    expect(result.current.state.phase).toBe('idle');
+    expect(result.current.state.phase).toBe('cancelled');
   });
 });

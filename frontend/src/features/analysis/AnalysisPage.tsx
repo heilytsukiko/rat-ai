@@ -15,7 +15,7 @@ export function AnalysisPage() {
       <section className="page-intro"><div><SectionLabel>ForteBank / Видеоконтроль</SectionLabel><h1>Проверка кассовых операций</h1><p>Загрузите запись и изучите события, требующие внимания.</p></div><span className="version-badge">Прототип <span>01</span></span></section>
       <DemoControls scenario={analysis.scenario} onScenarioChange={analysis.setScenario} onRun={() => void analysis.start(true)} disabled={analysis.busy} />
       <div className="workspace">
-        <UploadPanel file={analysis.file} error={analysis.fileError} state={analysis.state} busy={analysis.busy} onSelect={analysis.selectFile} onClear={analysis.clearFile} onStart={() => void analysis.start()} onCancel={analysis.cancel} />
+        <UploadPanel file={analysis.file} error={analysis.fileError} state={analysis.state} busy={analysis.busy} onSelect={analysis.selectFiles} onClear={analysis.clearFile} onStart={() => void analysis.start()} onCancel={analysis.cancel} />
         <AnalysisResults state={analysis.state} onRetry={() => void analysis.retry()} />
       </div>
       <AppFooter />

@@ -8,30 +8,47 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [scenario, setScenario] = useState<DemoScenario>('violation');
-  const [state, setState] = useState<AnalysisState>({ phase: 'done', result: createMockResult('violation') });
+  const [state, setState] = useState<AnalysisState>({ phase: 'preview', result: createMockResult('violation') });
   const activeRequest = useRef<AbortController | null>(null);
   const lastRunWasExample = useRef(false);
+  const requestTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const busy = state.phase === 'uploading' || state.phase === 'processing';
 
-  useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => () => {
+    activeRequest.current?.abort();
+    clearTimeout(requestTimeout.current);
+    activeRequest.current = null;
+  }, []);
 
   function cancel() {
     activeRequest.current?.abort();
+    clearTimeout(requestTimeout.current);
     activeRequest.current = null;
-    setState({ phase: 'idle' });
+    setState({ phase: 'cancelled' });
+  }
+
+  function selectFiles(files: File[]) {
+    if (files.length !== 1) {
+      setFileError('Выберите одну запись. Пакетная загрузка пока не поддерживается.');
+      return;
+    }
+    selectFile(files[0]);
   }
 
   function selectFile(next: File) {
-    cancel();
     const error = validateVideo(next);
     setFileError(error);
-    setFile(error ? null : next);
+    if (error) return;
+    cancel();
+    setState({ phase: 'idle' });
+    setFile(next);
   }
 
   function clearFile() {
     cancel();
     setFile(null);
     setFileError(null);
+    setState({ phase: 'idle' });
   }
 
   async function start(useExample = false) {
@@ -45,6 +62,14 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
     activeRequest.current = controller;
     setFileError(null);
     setState({ phase: 'uploading', progress: 0 });
+    clearTimeout(requestTimeout.current);
+    const timeout = setTimeout(() => {
+      if (activeRequest.current !== controller) return;
+      activeRequest.current = null;
+      controller.abort();
+      setState({ phase: 'failed', message: 'Сервис не ответил за 5 минут. Повторите попытку.' });
+    }, 300_000);
+    requestTimeout.current = timeout;
     try {
       const result = await service.analyze({ file: useExample ? undefined : file ?? undefined, scenario }, {
         signal: controller.signal,
@@ -60,11 +85,12 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
       if (controller.signal.aborted || activeRequest.current !== controller) return;
       setState({ phase: 'failed', message: error instanceof Error ? error.message : 'Не удалось выполнить проверку. Попробуйте ещё раз.' });
     } finally {
+      clearTimeout(timeout);
       if (activeRequest.current === controller) activeRequest.current = null;
     }
   }
 
   const retry = () => start(lastRunWasExample.current);
 
-  return { file, fileError, scenario, setScenario, state, busy, selectFile, clearFile, start, retry, cancel };
+  return { file, fileError, scenario, setScenario, state, busy, selectFile, selectFiles, clearFile, start, retry, cancel };
 }

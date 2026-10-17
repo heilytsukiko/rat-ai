@@ -50,6 +50,8 @@ export interface AnalysisService {
 
 export type AnalysisState =
   | { phase: 'idle' }
+  | { phase: 'preview'; result: AnalysisResult }
+  | { phase: 'cancelled' }
   | { phase: 'uploading'; progress: number }
   | { phase: 'processing' }
   | { phase: 'done'; result: AnalysisResult }
