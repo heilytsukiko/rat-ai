@@ -13,7 +13,10 @@ def load_detector(checkpoint=None):
         from safetensors.torch import load_file
         config = json.loads(checkpoint.with_suffix(".json").read_text(encoding="utf-8"))
         with checkpoint.open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != config["weights_sha256"]:
+            digest = hashlib.sha256()
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+            if digest.hexdigest() != config["weights_sha256"]:
                 raise ValueError("Detector checkpoint checksum mismatch")
         payload = {"config": config, "state_dict": load_file(str(checkpoint), device="cpu")}
     else:

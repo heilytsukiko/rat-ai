@@ -11,13 +11,25 @@ from prepare_dataset import apply_review
 from rat_ai.rules import load_rules
 
 
-def build_review_page(manifest, output, review=None):
+def build_review_page(manifest, output, review=None, suggestions=None):
     manifest = Path(manifest)
     rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not rows or len({row["video_id"] for row in rows}) != len(rows):
         raise ValueError("Review requires a nonempty manifest with unique video IDs")
     if review is not None:
         rows = apply_review(rows, Path(review))
+    drafts = {}
+    if suggestions is not None:
+        payload = json.loads(Path(suggestions).read_text(encoding='utf-8'))
+        if payload.get('human_review_required') is not True or not isinstance(payload.get('by_video_id'), dict):
+            raise ValueError('AI drafts must require human review')
+        drafts = payload['by_video_id']
+        if set(drafts) - {r['video_id'] for r in rows}:
+            raise ValueError('AI draft refers to an unknown video')
+        for draft in drafts.values():
+            if (not isinstance(draft, dict) or set(draft)-{'observed_action','event_type','uncertainty'}
+                or any(not isinstance(v,str) or len(v)>1500 for v in draft.values())):
+                raise ValueError('Invalid AI draft')
     records = []
     for row in rows:
         source = Path(row["video_path"])
@@ -26,11 +38,16 @@ def build_review_page(manifest, output, review=None):
         record = {key: row.get(key, "") for key in FIELDS}
         record["video_url"] = source.resolve().as_uri()
         record["review_status"] = row.get("review_status") or "pending"
+        if row['video_id'] in drafts:
+            record['ai_draft'] = drafts[row['video_id']]
         records.append(record)
     # Escape HTML parser delimiters even inside a script's JSON literal.
     data = json.dumps(records, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     # A newly imported CSV must not be overwritten by an older browser draft.
-    identity = hashlib.sha256(manifest.read_bytes() + data.encode()).hexdigest()[:24]
+    # Adding AI suggestions must not discard an existing human browser draft.
+    base = json.dumps([{k:v for k,v in row.items() if k!='ai_draft'} for row in records],
+                      ensure_ascii=True).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+    identity = hashlib.sha256(manifest.read_bytes() + base.encode()).hexdigest()[:24]
     rules = json.dumps(load_rules(), ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     page = PAGE.replace("__REVIEW_ID__", identity).replace("__RULE_CATALOG__", rules).replace("__REVIEW_RECORDS__", data)
     output = Path(output)
@@ -73,6 +90,9 @@ button.primary{background:#702741;color:white}#status{padding:10px;background:#f
 <label for="session_group">Группа съёмки — для каждого ролика</label>
 <input id="session_group" placeholder="Например: scene-01">
 <label for="event_type">Тип события — для положительных роликов</label><input id="event_type">
+<section id="ai_panel" hidden><h3>Черновик ИИ — не проверен</h3><p id="ai_text"></p>
+<button id="use_ai">Использовать как черновик</button>
+<p class="hint">Сверьте с видео. ИИ не подтверждает нарушение или правило; статус останется «Не проверено».</p></section>
 <label for="observed_action">Наблюдаемое действие</label><textarea id="observed_action"></textarea>
 <label for="rule_id">Правило для проверки</label><input id="rule_id" list="known_rules" placeholder="Выберите пункт № 231 или оставьте пустым">
 <datalist id="known_rules"></datalist><p id="rule_hint" class="hint"></p>
@@ -125,6 +145,8 @@ function show(){
   const row=records[index];
   el("selector").value=String(index);
   for(const key of editable)el(key).value=row[key]||"";
+  el("ai_panel").hidden=!row.ai_draft;
+  el("ai_text").textContent=row.ai_draft?[row.ai_draft.event_type,row.ai_draft.observed_action,row.ai_draft.uncertainty].filter(Boolean).join(" · "):"";
   el("video").src=row.video_url;
   el("sourceInfo").textContent=`${row.video_id}: ${row.label?"нарушение":"без нарушения"}; исходный таймкод: ${row.event_time_sec??"нет"}`;
   el("seek").disabled=row.event_time_sec===null || row.event_time_sec==="";
@@ -138,6 +160,11 @@ el("rule_id").addEventListener("change",()=>{const rule=catalog.rules.find(item=
 el("selector").addEventListener("change",event=>{save();index=Number(event.target.value);show();});
 el("previous").onclick=()=>{save();index--;show();};el("next").onclick=()=>{save();index++;show();};
 el("seek").onclick=()=>{el("video").currentTime=Number(records[index].event_time_sec);};
+el("use_ai").onclick=()=>{
+  const draft=records[index].ai_draft;if(!draft)return;
+  for(const key of ["observed_action","event_type"])if(!el(key).value.trim())el(key).value=draft[key]||"";
+  el("review_status").value="pending";save();
+};
 el("export").onclick=()=>{
   save();
   if(records.some(row=>row.review_status==="reviewed" && !complete(row))){el("error").textContent="Есть неполные записи со статусом «Проверено». Заполните поля или измените статус.";return;}
@@ -154,9 +181,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=Path("ai/local/dataset/manifest.jsonl"))
     parser.add_argument("--review", type=Path)
+    parser.add_argument("--suggestions", type=Path, help="Mapped AI drafts; never treated as reviewed annotations")
     parser.add_argument("--output", type=Path, default=Path("ai/local/review/index.html"))
     args = parser.parse_args()
-    print(json.dumps(build_review_page(args.manifest, args.output, args.review)))
+    print(json.dumps(build_review_page(args.manifest, args.output, args.review, args.suggestions)))
 
 
 if __name__ == "__main__":

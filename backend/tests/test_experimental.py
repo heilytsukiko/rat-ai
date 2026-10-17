@@ -18,7 +18,9 @@ def raw():
                             'first_scored_time_sec': 2.5, 'last_scored_time_sec': 2.5}]}
 
 
-@pytest.mark.parametrize('architecture', ['mobilenet_v3_small_temporal_v1', 'ssdlite_coco_temporal_v1'])
+@pytest.mark.parametrize('architecture', ['mobilenet_v3_small_temporal_v1', 'ssdlite_coco_temporal_v1',
+                                         'qwen2_5_vl_3b_qlora_v1', 'qwen3_vl_2b_qlora_v1',
+                                         'qwen2_5_vl_7b_qlora_v1', 'qwen3_vl_4b_qlora_v1'])
 def test_real_pipeline_experimental_mode_extracts_evidence_without_legal_verdict(monkeypatch, architecture):
     configure(monkeypatch, {**raw(), 'model': architecture})
     monkeypatch.setenv('ANALYSIS_MODE', 'experimental')

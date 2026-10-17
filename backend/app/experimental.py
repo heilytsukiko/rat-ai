@@ -22,7 +22,9 @@ class CandidatePolicy(BaseModel):
 class RawPrediction(BaseModel):
     model_config = ConfigDict(extra='forbid')
     experimental: Literal[True]
-    model: Literal['mobilenet_v3_small_temporal_v1', 'ssdlite_coco_temporal_v1']
+    model: Literal['mobilenet_v3_small_temporal_v1', 'ssdlite_coco_temporal_v1',
+                   'qwen2_5_vl_3b_qlora_v1', 'qwen3_vl_2b_qlora_v1',
+                   'qwen2_5_vl_7b_qlora_v1', 'qwen3_vl_4b_qlora_v1']
     threshold: float = Field(ge=0, le=1, allow_inf_nan=False)
     video_score: float = Field(ge=0, le=1, allow_inf_nan=False)
     peak_time_sec: float = Field(ge=0, allow_inf_nan=False)

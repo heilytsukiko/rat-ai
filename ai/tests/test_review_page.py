@@ -47,6 +47,31 @@ class ReviewPageTests(unittest.TestCase):
             build_review_page(self.manifest, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_ai_draft_is_escaped_and_never_becomes_a_reviewed_label(self):
+        build_review_page(self.manifest,self.output)
+        old_key=self.output.read_text(encoding='utf-8').split('const storageKey=')[1].split(';')[0]
+        path = self.output.parent/'drafts.json'
+        action = '</script><script>untrusted()</script>'
+        path.write_text(json.dumps({'human_review_required':True,'by_video_id':{
+            'X-0':{'observed_action':action,'event_type':'AI suggestion','uncertainty':'Unclear'}}}),encoding='utf-8')
+        build_review_page(self.manifest,self.output,suggestions=path)
+        page = self.output.read_text(encoding='utf-8')
+        self.assertEqual(page.split('const storageKey=')[1].split(';')[0],old_key)
+        self.assertNotIn(action,page)
+        self.assertEqual(page.count('</script>'),1)
+        records = json.loads(page.split('const records=')[1].split(';\n')[0])
+        self.assertEqual(records[0]['review_status'],'pending')
+        self.assertEqual(records[0]['observed_action'],'')
+        self.assertEqual(records[0]['ai_draft']['observed_action'],action)
+        self.assertEqual(records[0]['rule_id'],'')
+
+    def test_ai_cannot_set_review_status_or_target_unknown_video(self):
+        path = self.output.parent/'drafts.json'
+        for drafts in ({'X-0':{'review_status':'reviewed'}},{'unknown':{'observed_action':'test'}}):
+            path.write_text(json.dumps({'human_review_required':True,'by_video_id':drafts}),encoding='utf-8')
+            with self.assertRaises(ValueError):
+                build_review_page(self.manifest,self.output,suggestions=path)
+
     @unittest.skipUnless(shutil.which("node"), "Node required to test offline page interactions")
     def test_navigation_and_csv_export_roundtrip_into_importer(self):
         build_review_page(self.manifest, self.output)
