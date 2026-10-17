@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+frontend/designs/
+frontend/forte-five-designs.zip
+*.tsbuildinfo
