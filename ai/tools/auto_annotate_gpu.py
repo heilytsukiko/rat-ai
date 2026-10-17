@@ -33,22 +33,32 @@ MODELS = {'qwen25-7b': 'Qwen/Qwen2.5-VL-7B-Instruct', 'qwen3-4b': 'Qwen/Qwen3-VL
 
 
 def parse_answer(answer):
+    reason = 'invalid_json'
     try:
         value = json.loads(answer[answer.index('{'):answer.rindex('}')+1])
+        reason = 'unexpected_schema'
         if not isinstance(value, dict) or set(value) != {'action','visibility','review','observation','uncertainty'}:
             raise ValueError('Unexpected schema')
-        if (value['action'] not in ACTIONS or value['review'] not in REVIEWS or
-                value['visibility'] not in ('clear','partial','unclear')):
-            raise ValueError('Unexpected category')
+        for key, allowed in (('action',ACTIONS),('visibility',('clear','partial','unclear'))):
+            reason = 'invalid_'+key
+            if value[key] not in allowed:
+                raise ValueError('Unexpected category')
+        reason = 'invalid_text'
         if any(not isinstance(value[k], str) or len(value[k]) > 500 for k in ('observation','uncertainty')):
             raise ValueError('Invalid text')
         if not value['observation'].strip():
             raise ValueError('Empty observation')
-        return dict(value, parsed=True)
+        # Preserve valid visible-action fields, but never infer a verdict from
+        # an unknown review category or treat it as an ordinary/positive case.
+        review_was_invalid = value['review'] not in REVIEWS
+        if review_was_invalid:
+            value['review'] = 'unclear'
+        return dict(value, parsed=True, review_normalized_to_unclear=review_was_invalid)
     except (ValueError, TypeError, KeyError, AttributeError):
         return {'action':'unclear','visibility':'unclear','review':'unclear',
                 'observation':'Автоматический ответ не прошёл проверку формата.',
-                'uncertainty':'Разметка этого окна не определена.', 'parsed':False}
+                'uncertainty':'Разметка этого окна не определена.', 'parsed':False,
+                'parse_error':reason}
 
 
 def consensus(left, right):
@@ -73,7 +83,11 @@ def main():
     parser.add_argument('--dataset', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--synthetic-fixture', action='store_true')
+    parser.add_argument('--retry-invalid', action='store_true')
+    parser.add_argument('--max-new-tokens', type=int, default=210)
     args = parser.parse_args()
+    if not 100 <= args.max_new_tokens <= 512:
+        parser.error('max-new-tokens must be between 100 and 512')
     if bool(args.dataset) == bool(args.synthetic_fixture):
         parser.error('Choose a dataset or a synthetic fixture')
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -96,6 +110,9 @@ def main():
     completed = {row['sample_index'] for row in result['predictions']}
     if len(completed) != len(result['predictions']) or not completed.issubset(range(len(dataset['samples']))):
         raise ValueError('Invalid existing sample indices')
+    if args.retry_invalid:
+        result['predictions'] = [row for row in result['predictions'] if row.get('parsed') is True]
+        completed = {row['sample_index'] for row in result['predictions']}
     if len(completed) == len(dataset['samples']):
         print(json.dumps({'status':'complete','windows':len(completed)})); return
     torch.set_num_threads(4)
@@ -123,9 +140,10 @@ def main():
                 extra['video_metadata'] = [{'fps':fps,'duration':len(frames)/fps,
                     'total_num_frames':len(frames),'frames_indices':list(range(len(frames)))}]
             batch = processor(text=[text], videos=[frames], return_tensors='pt', **extra).to('cuda')
-            output = model.generate(**batch, max_new_tokens=210, do_sample=False, use_cache=True)
+            output = model.generate(**batch, max_new_tokens=args.max_new_tokens, do_sample=False, use_cache=True)
             answer = processor.tokenizer.decode(output[0,batch['input_ids'].shape[1]:], skip_special_tokens=True)
-            result['predictions'].append({'sample_index':index, **parse_answer(answer)})
+            result['predictions'].append({'sample_index':index, **parse_answer(answer),
+                'max_new_tokens':args.max_new_tokens,'retry_invalid':args.retry_invalid})
             temporary = args.output.with_suffix('.tmp')
             temporary.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')
             temporary.replace(args.output)

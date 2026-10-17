@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "windows": 276,
+  "unique_videos": 40,
+  "models": [
+    "Qwen/Qwen2.5-VL-7B-Instruct",
+    "Qwen/Qwen3-VL-4B-Instruct"
+  ],
+  "data_kind": "bank_review",
+  "status_counts": {
+    "uncertain": 258,
+    "auto_agreement": 18
+  },
+  "review_counts": {
+    "unclear": 258,
+    "ordinary_visible_action": 18
+  },
+  "action_counts": {
+    "unclear": 258,
+    "document_handling": 2,
+    "computer_use": 16
+  },
+  "parse_failures": [
+    0,
+    0
+  ],
+  "review_normalized_to_unclear": [
+    34,
+    0
+  ],
+  "silver_train_windows": 5,
+  "silver_validation_windows": 0,
+  "drafts": 41,
+  "human_verified": false,
+  "accuracy_measured": false,
+  "limitations": [
+    "Agreement is not ground truth; models may share errors.",
+    "Four sampled frames per window cannot verify full procedures or offscreen actions.",
+    "Positive training windows were originally selected around supplied points.",
+    "No automatic legal verdict or rule assignment; original binary labels preserved."
+  ]
+}

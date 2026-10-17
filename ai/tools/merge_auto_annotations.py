@@ -29,10 +29,14 @@ def merge(dataset, first, second, dataset_sha):
             raise ValueError('Each pass must cover every sample exactly once')
         indexed.append(by_index)
     annotations = []
+    durations = {group['group']:group.get('duration_sec',4) for group in dataset['groups']}
     for index, row in enumerate(dataset['samples']):
         a, b = (item[index] for item in indexed)
         annotations.append({'sample_index':index, 'group':row['group'], 'split':row['split'],
-                            'center_sec':row['center_sec'], **consensus(a,b),
+                            'center_sec':row['center_sec'],
+                            'context_start_sec':max(0,row['center_sec']-1.5),
+                            'context_end_sec':min(durations[row['group']]-.001,row['center_sec']+1.5),
+                            **consensus(a,b),
                             'observations':[a,b], 'rule_id':None})
     # These targets are neutral action codes, never fabricated human/legal labels.
     silver = [{'sample_index':a['sample_index'], 'file':dataset['samples'][a['sample_index']]['file'],
@@ -60,6 +64,8 @@ def merge(dataset, first, second, dataset_sha):
                'review_counts':dict(Counter(a['review'] for a in annotations)),
                'action_counts':dict(Counter(a['action'] for a in annotations)),
                'parse_failures':[sum(p.get('parsed') is not True for p in r['predictions']) for r in (first,second)],
+               'review_normalized_to_unclear':[sum(p.get('review_normalized_to_unclear') is True
+                                                  for p in r['predictions']) for r in (first,second)],
                'silver_train_windows':len(silver), 'silver_validation_windows':0,
                'drafts':len(drafts), 'human_verified':False, 'accuracy_measured':False,
                'limitations':['Agreement is not ground truth; models may share errors.',
@@ -94,7 +100,7 @@ def main():
     (args.output/'train-actions-silver.jsonl').write_text(''.join(json.dumps(row,ensure_ascii=False)+'\n'
                                                        for row in silver),encoding='utf-8')
     with (args.output/'annotations.csv').open('w',newline='',encoding='utf-8-sig') as stream:
-        fields=['sample_index','group','split','center_sec','action','review','status',
+        fields=['sample_index','group','split','center_sec','context_start_sec','context_end_sec','action','review','status',
                 'observation_qwen25','observation_qwen3','human_verified','rule_id']
         writer=csv.DictWriter(stream,fieldnames=fields)
         writer.writeheader()

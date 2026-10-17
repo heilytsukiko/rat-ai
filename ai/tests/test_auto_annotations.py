@@ -39,6 +39,14 @@ class AutoAnnotationTests(unittest.TestCase):
         self.assertEqual(output['action'], 'cash_counting')
         self.assertEqual(output['review'], 'unclear')
 
+    def test_unknown_review_retains_action_but_never_becomes_a_verdict(self):
+        value=self.valid(review='not_a_supported_category')
+        self.assertTrue(value['parsed'])
+        self.assertTrue(value['review_normalized_to_unclear'])
+        self.assertEqual(value['action'],'cash_counting')
+        self.assertEqual(value['review'],'unclear')
+        self.assertEqual(consensus(value,self.valid())['review'],'unclear')
+
     def merge_fixture(self):
         dataset={'samples':[{'group':i,'split':split,'center_sec':.5,'file':f'{i}.npz'}
                             for i,split in enumerate(('train','validation'))],
