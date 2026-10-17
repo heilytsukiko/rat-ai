@@ -18,6 +18,21 @@ os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
 
 def unique_videos(rows):
+    strategies = {r.get("split_strategy", "exact_duplicates_v1") for r in rows}
+    if len(strategies) != 1 or not strategies <= {"exact_duplicates_v1", "reviewed_sessions_v1"}:
+        raise ValueError("Inconsistent or unknown dataset split strategy")
+    if any(r.get("session_group") for r in rows) and strategies != {"reviewed_sessions_v1"}:
+        raise ValueError("Session annotations require rebuilding with --group-by-session")
+    if strategies == {"reviewed_sessions_v1"}:
+        seen = {}
+        for row in rows:
+            if not row.get("session_group") or not row.get("split_group"):
+                raise ValueError("Session manifest lacks grouping information")
+            for name in ("session_group", "split_group"):
+                key = (name, row[name])
+                if key in seen and seen[key] != row["split"]:
+                    raise ValueError("A recording session crosses dataset splits")
+                seen[key] = row["split"]
     groups = {}
     for row in rows:
         group = groups.setdefault(row["sha256"], {**row, "event_times_sec": []})
