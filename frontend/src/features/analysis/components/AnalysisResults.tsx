@@ -20,7 +20,8 @@ function CompletedAnalysis({ result, preview }: { result: AnalysisResult; previe
     </div>
     {result.isDemo && <div className="demo-result-note"><Info size={16} /><p><strong>{preview ? 'Так будет выглядеть результат.' : 'Это результат демонстрации.'}</strong> События и кадры условные. {preview ? 'Запустите пример или выберите видео слева.' : 'Выбранный файл не анализировался.'}</p></div>}
     <VerdictBanner result={result} />
-    {result.verdict === 'no_violation' ? <div className="empty-result"><div className="empty-icon success"><Check size={28} /></div><h3>События отсутствуют</h3><p>В записи не обнаружены признаки возможных нарушений. Результат предназначен для проверки человеком.</p></div>
+    {result.experimental && !result.violations.length ? <div className="empty-result"><div className="empty-icon"><FileSearch size={28} /></div><h3>Детектор не выделил фрагменты</h3><p>Это не заключение об отсутствии нарушений. Ролик требует самостоятельной проверки.</p></div>
+      : result.verdict === 'no_violation' ? <div className="empty-result"><div className="empty-icon success"><Check size={28} /></div><h3>События отсутствуют</h3><p>В записи не обнаружены признаки возможных нарушений. Результат предназначен для проверки человеком.</p></div>
       : selectedEvent ? <>
         <div className="review-toolbar"><h3>Разбор событий <span>{result.violations.length}</span></h3>
           <div className="event-pagination"><span aria-live="polite">{selectedIndex + 1} из {result.violations.length}</span>
@@ -32,7 +33,7 @@ function CompletedAnalysis({ result, preview }: { result: AnalysisResult; previe
           <EvidenceViewer key={selectedEvent.id} event={selectedEvent} events={result.violations} durationSec={result.durationSec} isDemo={result.isDemo} onSelectEvent={setSelectedId} />
           <EventList events={result.violations} selectedId={selectedEvent.id} onSelect={setSelectedId} />
           <p className="evidence-caption">Нажмите на кадр, чтобы рассмотреть детали.</p>
-        </div><EventDetails event={selectedEvent} index={selectedIndex} total={result.violations.length} /></div>
+        </div><EventDetails event={selectedEvent} index={selectedIndex} total={result.violations.length} experimental={result.experimental} /></div>
       </> : <div className="missing-evidence" role="status">Сервис не предоставил описания событий. Обоснование результата недоступно.</div>}
   </>;
 }

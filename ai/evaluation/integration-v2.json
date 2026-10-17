@@ -1,0 +1,13 @@
+{
+  "videos_checked": 8,
+  "all_passed": true,
+  "jpeg_frames_checked": 30,
+  "max_elapsed_sec": 9.891,
+  "quality_evaluated": false,
+  "schema_version": 1,
+  "ai_tests_passed": 39,
+  "backend_tests_passed": 31,
+  "frontend_tests_passed": 69,
+  "frontend_build": "passed",
+  "synthetic_ui_flow": "passed"
+}

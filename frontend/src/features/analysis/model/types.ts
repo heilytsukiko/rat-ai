@@ -1,5 +1,5 @@
 export type DemoScenario = 'violation' | 'no_violation' | 'failed';
-export type Verdict = 'violation' | 'no_violation';
+export type Verdict = 'violation' | 'no_violation' | 'review_required';
 
 export interface RegulatorySource {
   title: string;
@@ -30,6 +30,7 @@ export interface AnalysisResult {
   fileName: string;
   durationSec?: number;
   isDemo: boolean;
+  experimental?: boolean;
 }
 
 export interface AnalysisInput {

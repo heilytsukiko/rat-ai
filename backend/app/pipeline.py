@@ -34,6 +34,9 @@ class Prediction(BaseModel):
 
 
 def analyze(video: Path, deadline: float | None = None):
+    mode = os.getenv('ANALYSIS_MODE', 'strict')
+    if mode not in {'strict', 'experimental'}:
+        raise ValueError('ANALYSIS_MODE must be strict or experimental')
     local_deadline = time.monotonic() + min(240, max(1, int(os.getenv('ANALYSIS_TIMEOUT_SEC', '240'))))
     deadline = min(deadline, local_deadline) if deadline is not None else local_deadline
 
@@ -42,6 +45,12 @@ def analyze(video: Path, deadline: float | None = None):
         if remaining <= 0:
             raise TimeoutError('Analysis exceeded time budget')
         return subprocess.run(args, capture_output=True, check=True, timeout=remaining)
+
+    def extract_frame(timestamp):
+        jpeg = run([os.getenv('FFMPEG_BIN', 'ffmpeg'), '-v', 'error', '-ss', str(timestamp), '-i', str(video), '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=960:-2', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1']).stdout
+        if not jpeg.startswith(b'\xff\xd8'):
+            raise ValueError('Failed to extract JPEG evidence')
+        return {'timestamp_sec': timestamp, 'image_base64': base64.b64encode(jpeg).decode('ascii')}
 
     probe = json.loads(run([os.getenv('FFPROBE_BIN', 'ffprobe'), '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(video)]).stdout)
     duration = float(probe['format']['duration'])
@@ -57,7 +66,11 @@ def analyze(video: Path, deadline: float | None = None):
         run([*command, '--video', str(video.resolve()), '--output', str(output)])
         if output.stat().st_size > 1024 * 1024:
             raise ValueError('Model output too large')
-        prediction = Prediction.model_validate_json(output.read_text(encoding='utf-8'))
+        text = output.read_text(encoding='utf-8')
+        if mode == 'experimental':
+            from .experimental import adapt_prediction
+            return adapt_prediction(text, duration, extract_frame)
+        prediction = Prediction.model_validate_json(text)
         if (prediction.verdict == 'violation') != bool(prediction.violations):
             raise ValueError('Verdict conflicts with events')
         events = []
@@ -68,9 +81,6 @@ def analyze(video: Path, deadline: float | None = None):
             for timestamp in event.evidence_timestamps_sec:
                 if timestamp >= duration or abs(timestamp - event.timecode_sec) > 5:
                     raise ValueError('Evidence outside event window')
-                jpeg = run([os.getenv('FFMPEG_BIN', 'ffmpeg'), '-v', 'error', '-ss', str(timestamp), '-i', str(video), '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=960:-2', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1']).stdout
-                if not jpeg.startswith(b'\xff\xd8'):
-                    raise ValueError('Failed to extract JPEG evidence')
-                frames.append({'timestamp_sec': timestamp, 'image_base64': base64.b64encode(jpeg).decode('ascii')})
+                frames.append(extract_frame(timestamp))
             events.append({**event.model_dump(exclude={'evidence_timestamps_sec'}), 'evidence_frames': frames})
     return {'verdict': prediction.verdict, 'violations': events, 'duration_sec': duration}

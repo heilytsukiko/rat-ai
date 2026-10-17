@@ -7,6 +7,14 @@ import { ProcessingSteps } from './ProcessingSteps';
 import { FileDropzone } from './FileDropzone';
 
 describe('review and upload regressions', () => {
+  it('does not present an empty experimental result as absence of violations', () => {
+    const result = { ...createMockResult('no_violation'), isDemo: false,
+      experimental: true, verdict: 'review_required' as const };
+    render(<AnalysisResults state={{ phase: 'done', result }} onRetry={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'Детектор не выделил фрагменты' })).toBeInTheDocument();
+    expect(screen.getByText('Экспериментальный анализ — требуется проверка')).toBeInTheDocument();
+    expect(screen.queryByText('Нарушение не обнаружено')).not.toBeInTheDocument();
+  });
   it('labels a preview explicitly and navigates events without wrapping', () => {
     render(<AnalysisResults state={{ phase: 'preview', result: createMockResult('violation') }} onRetry={() => {}} />);
     expect(screen.getByText('Образец результата', { exact: false })).toBeInTheDocument();

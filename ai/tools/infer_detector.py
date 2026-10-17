@@ -22,7 +22,7 @@ def main():
     torch.set_num_threads(4)
     model, _ = load_detector(args.checkpoint)
     scored = score_video(model, args.video)
-    result = {**scored, "candidates": candidate_events(scored, args.threshold),
+    result = {**scored, "experimental": True, "candidates": candidate_events(scored, args.threshold),
               "threshold": args.threshold, "model": "mobilenet_v3_small_temporal_v1",
               "total_elapsed_sec": time.perf_counter() - started,
               "note": "Binary statistical candidates; event types and legal sources are not assigned."}

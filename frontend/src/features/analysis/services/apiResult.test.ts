@@ -29,3 +29,31 @@ describe('API result validation', () => {
     expect(result.violations[0].source).toBeUndefined();
   });
 });
+
+const experimental = () => ({ job_id: 'job', status: 'done', analysis_mode: 'experimental', experimental: true,
+  model: 'mobilenet_v3_small_temporal_v1', duration_sec: 20, threshold: .5,
+  candidates: [{ timecode_sec: 4, score: .8, evidence_frames: [{ timestamp_sec: 4, image_base64: '/9j/' }] }] });
+
+describe('experimental detector integration', () => {
+  it('maps real candidate evidence without inventing a legal verdict or source', () => {
+    const result = mapResult(experimental(), 'a.mov');
+    expect(result.experimental).toBe(true);
+    expect(result.verdict).toBe('review_required');
+    expect(result.violations[0].source).toBeUndefined();
+    expect(result.violations[0].description).toContain('не вероятность нарушения');
+    expect(result.violations[0].evidenceFrames[0].imageUrl).toContain('data:image/jpeg;base64,');
+  });
+  it('keeps empty candidate output inconclusive', () => {
+    const result = mapResult({ ...experimental(), candidates: [] }, 'a.mov');
+    expect(result.verdict).toBe('review_required');
+    expect(result.violations).toEqual([]);
+  });
+  it.each([{ experimental: false }, { verdict: 'no_violation' }, { threshold: NaN }, { duration_sec: 0 },
+    { candidates: [{ ...experimental().candidates[0], score: 1.1 }] },
+    { candidates: [{ ...experimental().candidates[0], score: .4 }] },
+    { candidates: [{ ...experimental().candidates[0], timecode_sec: 21 }] },
+    { candidates: [{ ...experimental().candidates[0], evidence_frames: [] }] },
+  ])('rejects malformed or contradictory experimental payload %j', change => {
+    expect(() => mapResult({ ...experimental(), ...change }, 'a.mov')).toThrow(INVALID_RESULT);
+  });
+});

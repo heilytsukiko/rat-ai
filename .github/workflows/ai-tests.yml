@@ -1,10 +1,10 @@
-name: AI package tests
+name: AI and application tests
 
 on:
   pull_request:
-    paths: ["ai/**", ".github/workflows/ai-tests.yml"]
+    paths: ["ai/**", "backend/**", "frontend/**", ".github/workflows/ai-tests.yml"]
   push:
-    paths: ["ai/**", ".github/workflows/ai-tests.yml"]
+    paths: ["ai/**", "backend/**", "frontend/**", ".github/workflows/ai-tests.yml"]
 
 permissions:
   contents: read
@@ -24,3 +24,17 @@ jobs:
         run: python -m pip install -e "./ai[training]" --extra-index-url https://download.pytorch.org/whl/cpu
       - name: Test using synthetic videos only
         run: python -m unittest discover -s ai/tests -v
+      - name: Install backend test dependencies
+        run: python -m pip install -r backend/requirements.txt pytest httpx
+      - name: Test backend contracts and experimental integration
+        working-directory: backend
+        run: python -m pytest tests -q
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
