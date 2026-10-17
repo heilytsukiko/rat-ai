@@ -1,5 +1,4 @@
 """Authenticated, persistent local video analysis API."""
-import asyncio
 import hmac
 import json
 import os
@@ -51,9 +50,11 @@ def process(job_id, path):
 
 @asynccontextmanager
 async def lifespan(app):
+    global executor
     if len(API_KEY) < 16:
         raise RuntimeError('Set API_KEY to a random secret of at least 16 characters')
     initialize()
+    executor = ThreadPoolExecutor(max_workers=1)
     yield
     executor.shutdown(wait=True)
 
