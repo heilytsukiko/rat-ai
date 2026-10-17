@@ -29,7 +29,7 @@ export const mockAnalysisService: AnalysisService = {
     if (input.scenario === 'failed') {
       throw new Error('Не удалось обработать запись. Это демонстрация ошибки сервиса. Повторите попытку или выберите другой сценарий.');
     }
-    const result = createMockResult(input.scenario, input.file?.name);
+    const result = createMockResult(input.scenario ?? 'violation', input.file?.name);
     return input.file ? { ...result, durationSec: undefined } : result;
   },
 };

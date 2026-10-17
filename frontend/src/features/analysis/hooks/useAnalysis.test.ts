@@ -32,7 +32,8 @@ describe('useAnalysis', () => {
     } };
     const { result } = renderHook(() => useAnalysis(service));
     let pending!: Promise<void>;
-    act(() => { pending = result.current.start(true); });
+    act(() => result.current.selectFile(new File(['a'], 'own.mov')));
+    act(() => { pending = result.current.start(); });
     expect(result.current.state.phase).toBe('uploading');
     act(() => result.current.cancel());
     expect(signal?.aborted).toBe(true);

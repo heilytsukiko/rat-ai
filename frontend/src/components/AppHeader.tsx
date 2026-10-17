@@ -6,6 +6,6 @@ export function AppHeader() {
       <span className="brand-mark" aria-hidden="true">AI</span><span className="brand-name">Rat</span>
       <span className="brand-caption">Контроль кассовых операций</span>
     </a>
-    <div className="header-meta"><ShieldCheck size={15} /><span>Демонстрационный режим</span></div>
+    <div className="header-meta"><ShieldCheck size={15} /><span>Локальный анализ видео</span></div>
   </header>;
 }

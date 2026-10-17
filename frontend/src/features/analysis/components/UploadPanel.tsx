@@ -27,15 +27,15 @@ export function UploadPanel({ file, error, state, busy, onSelect, onClear, onSta
       : <p className="file-placeholder">Файл ещё не выбран</p>}
     {error && <p id="file-error" className="field-error" role="alert">{error}</p>}
     <button className="button button-primary upload-button" onClick={onStart} disabled={busy}>
-      {busy ? <><LoaderCircle className="spin" size={16} />{uploading ? 'Загрузка…' : 'Обработка…'}</> : <>Проверить в демо<ArrowRight size={16} /></>}
+      {busy ? <><LoaderCircle className="spin" size={16} />{uploading ? 'Загрузка…' : 'Обработка…'}</> : <>Проверить видео<ArrowRight size={16} /></>}
     </button>
     {busy && <div className="upload-progress">
-      {uploading ? <><div className="progress-caption"><span>Демо: загрузка</span><span>{state.progress}%</span></div><progress max="100" value={state.progress} aria-label="Прогресс демонстрационной загрузки" /></> : <p className="muted">Демо: поиск событий в записи…</p>}
-      <button className="text-button" onClick={onCancel}>Отменить проверку</button>
+      {uploading ? <><div className="progress-caption"><span>Загрузка видео</span><span>{state.progress}%</span></div><progress max="100" value={state.progress} aria-label="Прогресс загрузки видео" /></> : <p className="muted">Поиск событий в записи…</p>}
+      <button className="text-button" onClick={onCancel}>Прекратить ожидание</button>
     </div>}
     {(state.phase === 'done' || state.phase === 'failed' || state.phase === 'cancelled' || busy) && <ProcessingSteps state={state} />}
     {state.phase === 'done' && <a className="result-shortcut" href="#analysis-result">Посмотреть результат<ArrowRight size={15} /></a>}
-    {state.phase === 'cancelled' && <p className="cancel-note" role="status">Проверка отменена. Можно запустить снова.</p>}
-    <div className="privacy-note"><LockKeyhole size={14} /><p>В этом прототипе файл остаётся на устройстве. Загрузка и обработка имитируются.</p></div>
+    {state.phase === 'cancelled' && <p className="cancel-note" role="status">Ожидание прекращено. Обработка на сервере может продолжаться.</p>}
+    <div className="privacy-note"><LockKeyhole size={14} /><p>Видео передаётся на сервер для локального анализа и удаляется после обработки.</p></div>
   </aside>;
 }

@@ -7,9 +7,9 @@ import { createMockResult } from '../mocks/results';
 afterEach(() => vi.useRealTimers());
 
 describe('analysis lifecycle regressions', () => {
-  it('starts with a sample, not a successful user analysis', () => {
+  it('starts idle without a fabricated analysis', () => {
     const { result } = renderHook(() => useAnalysis());
-    expect(result.current.state.phase).toBe('preview');
+    expect(result.current.state.phase).toBe('idle');
     expect(result.current.file).toBeNull();
   });
 
@@ -18,7 +18,7 @@ describe('analysis lifecycle regressions', () => {
     act(() => result.current.selectFiles([new File(['a'], 'a.mov'), new File(['b'], 'b.mov')]));
     expect(result.current.file).toBeNull();
     expect(result.current.fileError).toContain('одну запись');
-    expect(result.current.state.phase).toBe('preview');
+    expect(result.current.state.phase).toBe('idle');
   });
 
   it('limits a hung service to five minutes and ignores its later progress', async () => {
@@ -26,7 +26,8 @@ describe('analysis lifecycle regressions', () => {
     let options!: Parameters<AnalysisService['analyze']>[1];
     const service: AnalysisService = { analyze: (_input, callbacks) => { options = callbacks; return new Promise(() => {}); } };
     const { result } = renderHook(() => useAnalysis(service));
-    act(() => { void result.current.start(true); });
+    act(() => result.current.selectFile(new File(['a'], 'own.mov')));
+    act(() => { void result.current.start(); });
     await act(() => vi.advanceTimersByTimeAsync(300_000));
     expect(options.signal.aborted).toBe(true);
     expect(result.current.state).toMatchObject({ phase: 'failed', message: expect.stringContaining('5 минут') });
@@ -39,20 +40,20 @@ describe('analysis lifecycle regressions', () => {
     let signal!: AbortSignal;
     const service: AnalysisService = { analyze: (_input, options) => { signal = options.signal; return new Promise(() => {}); } };
     const { result, unmount } = renderHook(() => useAnalysis(service));
-    act(() => { void result.current.start(true); });
+    act(() => result.current.selectFile(new File(['a'], 'own.mov')));
+    act(() => { void result.current.start(); });
     unmount();
     expect(signal.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('retries the example rather than a selected user file', async () => {
+  it('retries the selected video', async () => {
     const analyze = vi.fn<AnalysisService['analyze']>().mockRejectedValueOnce(new Error('Ошибка')).mockResolvedValueOnce(createMockResult('no_violation'));
     const { result } = renderHook(() => useAnalysis({ analyze }));
     act(() => result.current.selectFile(new File(['a'], 'own.mov')));
-    await act(() => result.current.start(true));
-    act(() => result.current.setScenario('no_violation'));
+    await act(() => result.current.start());
     await act(() => result.current.retry());
-    expect(analyze.mock.calls[1][0]).toEqual({ file: undefined, scenario: 'no_violation' });
+    expect(analyze.mock.calls[1][0]).toEqual({ file: expect.objectContaining({ name: 'own.mov' }) });
     expect(result.current.state.phase).toBe('done');
   });
 });

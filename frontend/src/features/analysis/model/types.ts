@@ -34,7 +34,7 @@ export interface AnalysisResult {
 
 export interface AnalysisInput {
   file?: File;
-  scenario: DemoScenario;
+  scenario?: DemoScenario;
 }
 
 export interface AnalysisService {

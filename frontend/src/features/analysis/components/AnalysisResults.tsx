@@ -20,7 +20,7 @@ function CompletedAnalysis({ result, preview }: { result: AnalysisResult; previe
     </div>
     {result.isDemo && <div className="demo-result-note"><Info size={16} /><p><strong>{preview ? 'Так будет выглядеть результат.' : 'Это результат демонстрации.'}</strong> События и кадры условные. {preview ? 'Запустите пример или выберите видео слева.' : 'Выбранный файл не анализировался.'}</p></div>}
     <VerdictBanner result={result} />
-    {result.verdict === 'no_violation' ? <div className="empty-result"><div className="empty-icon success"><Check size={28} /></div><h3>События отсутствуют</h3><p>В этом демонстрационном сценарии признаки нарушений не обнаружены. Можно выбрать другой сценарий или новую запись.</p></div>
+    {result.verdict === 'no_violation' ? <div className="empty-result"><div className="empty-icon success"><Check size={28} /></div><h3>События отсутствуют</h3><p>В записи не обнаружены признаки возможных нарушений. Результат предназначен для проверки человеком.</p></div>
       : selectedEvent ? <>
         <div className="review-toolbar"><h3>Разбор событий <span>{result.violations.length}</span></h3>
           <div className="event-pagination"><span aria-live="polite">{selectedIndex + 1} из {result.violations.length}</span>
@@ -46,9 +46,9 @@ export function AnalysisResults({ state, onRetry }: { state: AnalysisState; onRe
       <div className="empty-result" role={state.phase === 'failed' ? 'alert' : 'status'}>
         <div className={`empty-icon ${state.phase === 'failed' ? 'error' : ''}`}>{busy ? <LoaderCircle size={29} className="spin" /> : state.phase === 'failed' ? <TriangleAlert size={29} /> : <FileSearch size={29} />}</div>
         <h3>{state.phase === 'uploading' ? 'Подготавливаем запись' : state.phase === 'processing' ? 'Проверяем события' : state.phase === 'failed' ? 'Проверка не завершена' : cancelled ? 'Проверка отменена' : 'Всё готово к проверке'}</h3>
-        <p>{state.phase === 'failed' ? state.message : busy ? 'Имитируем работу сервиса. Через несколько секунд здесь появится демонстрационный результат.' : cancelled ? 'Выбранный файл сохранён. Вы можете запустить проверку снова или выбрать другую запись.' : 'Запустите проверку слева или попробуйте готовый пример. Здесь появятся вердикт, события и кадры-доказательства.'}</p>
+        <p>{state.phase === 'failed' ? state.message : busy ? 'Видео обрабатывается на сервере. Анализ может занять до 5 минут.' : cancelled ? 'Ожидание прекращено. Задача на сервере может продолжаться. Вы можете запустить новую проверку.' : 'Загрузите видео и запустите проверку слева. Здесь появятся вердикт, события и кадры-доказательства.'}</p>
         {state.phase === 'uploading' && <div className="result-progress"><progress max="100" value={state.progress} aria-label="Подготовка записи" /><span>{state.progress}%</span></div>}
-        {state.phase === 'processing' && <div className="processing-indicator"><span />Анализируем демонстрационный пример</div>}
+        {state.phase === 'processing' && <div className="processing-indicator"><span />Анализируем запись</div>}
         {state.phase === 'failed' && <button className="button button-secondary" onClick={onRetry}><RotateCcw size={15} />Повторить попытку</button>}
       </div>
     </>}

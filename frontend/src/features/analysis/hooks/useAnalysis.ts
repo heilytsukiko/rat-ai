@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AnalysisService, AnalysisState, DemoScenario } from '../model/types';
+import type { AnalysisService, AnalysisState } from '../model/types';
 import { validateVideo } from '../model/validation';
-import { createMockResult } from '../mocks/results';
-import { mockAnalysisService } from '../services/mockAnalysisService';
+import { apiAnalysisService } from '../services/apiAnalysisService';
 
-export function useAnalysis(service: AnalysisService = mockAnalysisService) {
+export function useAnalysis(service: AnalysisService = apiAnalysisService) {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<DemoScenario>('violation');
-  const [state, setState] = useState<AnalysisState>({ phase: 'preview', result: createMockResult('violation') });
+  const [state, setState] = useState<AnalysisState>({ phase: 'idle' });
   const activeRequest = useRef<AbortController | null>(null);
-  const lastRunWasExample = useRef(false);
   const requestTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const busy = state.phase === 'uploading' || state.phase === 'processing';
 
@@ -51,12 +48,11 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
     setState({ phase: 'idle' });
   }
 
-  async function start(useExample = false) {
-    if (!useExample && !file) {
-      setFileError('Сначала выберите .mov-видео или запустите готовый пример.');
+  async function start() {
+    if (!file) {
+      setFileError('Сначала выберите .mov-видео.');
       return;
     }
-    lastRunWasExample.current = useExample;
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
@@ -71,7 +67,7 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
     }, 300_000);
     requestTimeout.current = timeout;
     try {
-      const result = await service.analyze({ file: useExample ? undefined : file ?? undefined, scenario }, {
+      const result = await service.analyze({ file }, {
         signal: controller.signal,
         onUploadProgress: progress => {
           if (activeRequest.current === controller) setState({ phase: 'uploading', progress });
@@ -90,7 +86,7 @@ export function useAnalysis(service: AnalysisService = mockAnalysisService) {
     }
   }
 
-  const retry = () => start(lastRunWasExample.current);
+  const retry = () => start();
 
-  return { file, fileError, scenario, setScenario, state, busy, selectFile, selectFiles, clearFile, start, retry, cancel };
+  return { file, fileError, state, busy, selectFile, selectFiles, clearFile, start, retry, cancel };
 }
