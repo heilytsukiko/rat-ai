@@ -9,3 +9,17 @@ coverage/
 frontend/designs/
 frontend/forte-five-designs.zip
 *.tsbuildinfo
+
+# Local AI data and model artifacts (never publish the bank dataset).
+ai/local/
+ai/.venv/
+__pycache__/
+*.py[cod]
+*.mov
+*.MOV
+*.safetensors
+*.onnx
+*.pt
+!ai/rat_ai/artifacts/detector-v2.safetensors
+*.egg-info/
+build/

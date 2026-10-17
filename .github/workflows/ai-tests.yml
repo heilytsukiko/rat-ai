@@ -1,0 +1,26 @@
+name: AI package tests
+
+on:
+  pull_request:
+    paths: ["ai/**", ".github/workflows/ai-tests.yml"]
+  push:
+    paths: ["ai/**", ".github/workflows/ai-tests.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai/pyproject.toml
+      - name: Install CPU detector
+        run: python -m pip install -e "./ai[training]" --extra-index-url https://download.pytorch.org/whl/cpu
+      - name: Test using synthetic videos only
+        run: python -m unittest discover -s ai/tests -v

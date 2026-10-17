@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rat-ai-vision"
+version = "0.1.0"
+description = "Experimental local temporal video detector for Rat AI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "torch==2.14.1+cpu",
+  "torchvision==0.29.1+cpu",
+  "numpy==2.5.4",
+  "opencv-python-headless==5.0.0.93",
+  "psutil==7.2.2",
+  "safetensors==0.8.0",
+]
+
+[project.optional-dependencies]
+training = ["openpyxl==3.1.5"]
+qwen = [
+  "openvino==2026.4.1",
+  "openvino-genai==2026.4.1.0",
+  "transformers==4.57.6",
+  "huggingface-hub==0.36.2",
+  "hf-xet==1.7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rat_ai*"]
+
+[tool.setuptools.package-data]
+rat_ai = ["artifacts/*.json", "artifacts/*.safetensors", "artifacts/*.txt", "artifacts/*.md"]

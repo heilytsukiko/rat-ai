@@ -1,0 +1,181 @@
+{
+  "repository": "helenai/Qwen3-VL-2B-Instruct-int4",
+  "revision": "61f75fcd9f922da40af9463a30bdd231fe4f6f14",
+  "source": "https://huggingface.co/api/models/helenai/Qwen3-VL-2B-Instruct-int4/tree/61f75fcd9f922da40af9463a30bdd231fe4f6f14",
+  "entries": [
+    {
+      "type": "file",
+      "oid": "c38da74232460dcc7605d2f933a1ca2bac72f909",
+      "size": 436,
+      "path": "README.md"
+    },
+    {
+      "type": "file",
+      "oid": "b54f9135e44c1e81047e8d05cb027af8bc039eed",
+      "size": 707,
+      "path": "added_tokens.json"
+    },
+    {
+      "type": "file",
+      "oid": "124386803f142761528f710e77ae483f5f8c4fc4",
+      "size": 5292,
+      "path": "chat_template.jinja"
+    },
+    {
+      "type": "file",
+      "oid": "57ad803152bdbc0ad8e28e4267d78b2f7d1ae418",
+      "size": 1550,
+      "path": "config.json"
+    },
+    {
+      "type": "file",
+      "oid": "a458fbca3288bcf7b8b8ec990e82ad2234feb506",
+      "size": 218,
+      "path": "generation_config.json"
+    },
+    {
+      "type": "file",
+      "oid": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+      "size": 1671853,
+      "path": "merges.txt"
+    },
+    {
+      "type": "file",
+      "oid": "03880180b3493b8ad9233e53aa9d061caf484f29",
+      "size": 674,
+      "path": "openvino_config.json"
+    },
+    {
+      "type": "file",
+      "oid": "3f9a387b7ab7c030639342cd3dff333a31402109",
+      "size": 1044285185,
+      "lfs": {
+        "oid": "2757a54d727a5ef5e8d29f55dfdd39e98eaf10bd11d3a2f649fbebee0ddd96cb",
+        "size": 1044285185,
+        "pointerSize": 135
+      },
+      "xetHash": "980fdc59bb2c539a57d905f1e91cf105a8e2b36d9185c3ec71a15879a452ca5b",
+      "path": "openvino_language_model.bin"
+    },
+    {
+      "type": "file",
+      "oid": "8723dc0818e0415d1c3552ec24d63082ccb83ff9",
+      "size": 3049838,
+      "path": "openvino_language_model.xml"
+    },
+    {
+      "type": "file",
+      "oid": "e12602ade25068b2e877a1e59fb52eff9970421f",
+      "size": 311468804,
+      "lfs": {
+        "oid": "a045cc9803e22ac5670d676cf8370990833b6fb8e836f9549c8d619ed0be0341",
+        "size": 311468804,
+        "pointerSize": 134
+      },
+      "xetHash": "1faad9d6fde6ad00d8d67762dd03a970886d080afb5d9d55f825fa9f7a91a0fd",
+      "path": "openvino_text_embeddings_model.bin"
+    },
+    {
+      "type": "file",
+      "oid": "e0bdb75e7db5e1542f97b60e9d018773588ec5a9",
+      "size": 5646,
+      "path": "openvino_text_embeddings_model.xml"
+    },
+    {
+      "type": "file",
+      "oid": "35391f4142db7e14df689b94790a824bdf58027b",
+      "size": 404627620,
+      "lfs": {
+        "oid": "9dad3c2974237e2e16db1691bc4f3c4870221864b77d2f509fe682518ba5c65a",
+        "size": 404627620,
+        "pointerSize": 134
+      },
+      "xetHash": "58ff7312f000d49d70ed6841556fe704401bc59023cc6b41cb820dd4e7c8abb4",
+      "path": "openvino_vision_embeddings_merger_model.bin"
+    },
+    {
+      "type": "file",
+      "oid": "031a8ed3003758141df54d8b9d289038de36ad01",
+      "size": 1158408,
+      "path": "openvino_vision_embeddings_merger_model.xml"
+    },
+    {
+      "type": "file",
+      "oid": "d5e0689a295d675d878083c855527c3178f8dc8b",
+      "size": 1579064,
+      "lfs": {
+        "oid": "be86e59e7c76bd9ddd9d2e66d42ffe4718fc880e69d6e082e4977acbad203bc5",
+        "size": 1579064,
+        "pointerSize": 132
+      },
+      "xetHash": "1bbb75f3ee130ccf5eeff8469acad0068cfe619554d61ac649a704835065108d",
+      "path": "openvino_vision_embeddings_model.bin"
+    },
+    {
+      "type": "file",
+      "oid": "c56fae406ae1150a288e9230dc93bd4e1944243d",
+      "size": 8485,
+      "path": "openvino_vision_embeddings_model.xml"
+    },
+    {
+      "type": "file",
+      "oid": "01d89eff4eeb74a3ad915e66df9e57e1a6084d7a",
+      "size": 2363908,
+      "lfs": {
+        "oid": "3b02afaa8807e3672aefb76d3fdbab09a1a6d38908b5b26d0faa1750c7cacab0",
+        "size": 2363908,
+        "pointerSize": 132
+      },
+      "xetHash": "7f4a385b04f86021a0019d7a905ab0a4481cda0d929bcef025fd4cac375d1ec0",
+      "path": "openvino_vision_embeddings_pos_model.bin"
+    },
+    {
+      "type": "file",
+      "oid": "c557067a7956360d647a8ae7f03abe21b5b91529",
+      "size": 5618,
+      "path": "openvino_vision_embeddings_pos_model.xml"
+    },
+    {
+      "type": "file",
+      "oid": "de8c87cb6b61df12d0d871e7b1beca0c4bd2a87e",
+      "size": 744,
+      "path": "preprocessor_config.json"
+    },
+    {
+      "type": "file",
+      "oid": "ac23c0aaa2434523c494330aeb79c58395378103",
+      "size": 613,
+      "path": "special_tokens_map.json"
+    },
+    {
+      "type": "file",
+      "oid": "cd71f61a15a522601badb3dc960d800d9cb3766c",
+      "size": 11422654,
+      "lfs": {
+        "oid": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "size": 11422654,
+        "pointerSize": 133
+      },
+      "xetHash": "693ec4b3922b0bd306bf7b4989e115ffbfeb7b0c08b31bc6d956818c6bb07f61",
+      "path": "tokenizer.json"
+    },
+    {
+      "type": "file",
+      "oid": "fec7f182135c384a08ea2fc9635566ca79c45afc",
+      "size": 5445,
+      "path": "tokenizer_config.json"
+    },
+    {
+      "type": "file",
+      "oid": "809d3b6246f8df926be516d85f109a712a733dca",
+      "size": 839,
+      "path": "video_preprocessor_config.json"
+    },
+    {
+      "type": "file",
+      "oid": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "size": 2776833,
+      "path": "vocab.json"
+    }
+  ]
+}
