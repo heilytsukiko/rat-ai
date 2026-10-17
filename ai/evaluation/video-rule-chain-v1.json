@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "experiment": "video-caption-rule-chain-v1",
+  "selected_validation_videos": 8,
+  "selected_windows": 24,
+  "caption_models": [
+    "Qwen/Qwen2.5-VL-7B-Instruct",
+    "Qwen/Qwen3-VL-4B-Instruct"
+  ],
+  "rules": 6,
+  "skipped_invalid_captions": 0,
+  "selection": "first/middle/last available validation windows; no labels or event times",
+  "reports": {
+    "base": {
+      "tasks": 288,
+      "valid_outputs": 288,
+      "invalid_outputs": 0,
+      "raw_status_counts": {
+        "not_supported": 250,
+        "insufficient_evidence": 38
+      },
+      "bounded_status_counts": {
+        "insufficient_evidence": 278,
+        "not_supported": 10
+      },
+      "claims_changed_to_unknown": 345,
+      "positive_claims_changed_to_unknown": 73,
+      "negative_claims_changed_to_unknown": 272,
+      "override_reason_counts": {
+        "room_function_unverified": 48,
+        "storage_duration_unverified": 48,
+        "operation_type_unverified": 56,
+        "complete_client_area_coverage_unverified": 48,
+        "full_acceptance_sequence_unavailable": 48,
+        "full_counting_sequence_unavailable": 48,
+        "full_exchange_sequence_unavailable": 48,
+        "ownership_and_exceptions_unverified": 1
+      },
+      "per_rule": {
+        "NBK231-P12": {
+          "raw": {
+            "not_supported": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P20": {
+          "raw": {
+            "not_supported": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P21": {
+          "raw": {
+            "not_supported": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P22": {
+          "raw": {
+            "insufficient_evidence": 38,
+            "not_supported": 10
+          },
+          "bounded": {
+            "insufficient_evidence": 38,
+            "not_supported": 10
+          }
+        },
+        "NBK231-P32": {
+          "raw": {
+            "not_supported": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P34": {
+          "raw": {
+            "not_supported": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        }
+      }
+    },
+    "adapter": {
+      "tasks": 288,
+      "valid_outputs": 288,
+      "invalid_outputs": 0,
+      "raw_status_counts": {
+        "insufficient_evidence": 286,
+        "not_supported": 2
+      },
+      "bounded_status_counts": {
+        "insufficient_evidence": 287,
+        "not_supported": 1
+      },
+      "claims_changed_to_unknown": 1,
+      "positive_claims_changed_to_unknown": 0,
+      "negative_claims_changed_to_unknown": 1,
+      "override_reason_counts": {
+        "storage_duration_unverified": 1
+      },
+      "per_rule": {
+        "NBK231-P12": {
+          "raw": {
+            "insufficient_evidence": 47,
+            "not_supported": 1
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P20": {
+          "raw": {
+            "insufficient_evidence": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P21": {
+          "raw": {
+            "insufficient_evidence": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P22": {
+          "raw": {
+            "insufficient_evidence": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        },
+        "NBK231-P32": {
+          "raw": {
+            "insufficient_evidence": 47,
+            "not_supported": 1
+          },
+          "bounded": {
+            "insufficient_evidence": 47,
+            "not_supported": 1
+          }
+        },
+        "NBK231-P34": {
+          "raw": {
+            "insufficient_evidence": 48
+          },
+          "bounded": {
+            "insufficient_evidence": 48
+          }
+        }
+      }
+    }
+  },
+  "accuracy_measured": false,
+  "promoted_to_site": false,
+  "elapsed_sec": 400.4,
+  "limitations": [
+    "Existing unverified captions reused; no fresh video inference in this audit.",
+    "No human-reviewed action/condition ground truth; counts are not accuracy or false-positive rates.",
+    "Zero bounded possible-issue results is guaranteed by the conservative protocol, not model quality.",
+    "Three sampled windows per validation video do not cover the full video.",
+    "Text adapter was trained on fictional scenarios; observations may contain shared VLM errors."
+  ]
+}
