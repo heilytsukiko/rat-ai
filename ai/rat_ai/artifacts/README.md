@@ -18,6 +18,10 @@ an experimental collaboration baseline, not a reliable violation detector.
 They do not assign event types or regulatory sources. Qwen is a separate,
 unfinished experiment and was not fine-tuned.
 
+Full-video ROC AUC for v2 on this repeatedly used validation set is 0.0.
+A third training experiment reduced false alarms but missed every positive
+video; it was not promoted. See `../../EXPERIMENTS.md` for the comparison.
+
 Source attribution and license: `TORCHVISION-LICENSE.txt`. This directory does
 not grant any additional rights over the hackathon source dataset. Keep source
 data and private training records in the team's authorized environment.

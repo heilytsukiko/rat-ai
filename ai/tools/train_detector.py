@@ -33,7 +33,7 @@ def unique_videos(rows):
     return result
 
 
-def training_samples(videos, dense_negative_stride=None):
+def training_samples(videos, dense_negative_stride=None, dense_validation=False):
     import numpy as np
     samples = []
     for row in videos:
@@ -41,7 +41,7 @@ def training_samples(videos, dense_negative_stride=None):
             offsets = (-0.5, 0, 0.5) if row["split"] == "train" else (0,)
             centers = sorted({round(min(max(0, t + offset), row["duration_sec"] - 0.1), 4)
                               for t in row["event_times_sec"] for offset in offsets})
-        elif dense_negative_stride is not None and row["split"] == "train":
+        elif dense_negative_stride is not None and (row["split"] == "train" or dense_validation):
             centers = np.arange(0.5, row["duration_sec"], dense_negative_stride).tolist()
         else:
             centers = np.linspace(0.5, row["duration_sec"] - 0.5, 4).tolist()
@@ -50,6 +50,37 @@ def training_samples(videos, dense_negative_stride=None):
                             "video_path": row["video_path"], "duration_sec": row["duration_sec"],
                             "center_sec": center, "label": row["label"], "split": row["split"]})
     return samples
+
+
+def video_groups(samples, split):
+    """One contribution per unique video, independent of duration/window count."""
+    groups = {}
+    for index, sample in enumerate(samples):
+        if sample["split"] != split:
+            continue
+        group = groups.setdefault(sample["sha256"], {"label": sample["label"], "indices": []})
+        if group["label"] != sample["label"]:
+            raise ValueError("Conflicting video labels")
+        group["indices"].append(index)
+    if {g["label"] for g in groups.values()} != {0, 1}:
+        raise ValueError("Both video classes are required")
+    return list(groups.values())
+
+
+def video_loss(logits, label):
+    """Known positive points; penalize worst false alarm plus negative coverage."""
+    import torch
+    import torch.nn.functional as F
+    losses = F.binary_cross_entropy_with_logits(logits, torch.full_like(logits, label), reduction="none")
+    return losses.mean() if label else 0.75 * losses.max() + 0.25 * losses.mean()
+
+
+def balanced_video_loss(model, features, groups):
+    import torch
+    # Weight each class equally, then each video equally within its class.
+    losses = [video_loss(model.forward_cached(features[g["indices"]]), g["label"]) for g in groups]
+    return torch.stack([torch.stack([loss for loss, group in zip(losses, groups)
+                                     if group["label"] == label]).mean() for label in (0, 1)]).mean()
 
 
 def binary_metrics(labels, scores, threshold=0.5):
@@ -73,11 +104,14 @@ def main():
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--dense-negative-stride-sec", type=float)
     parser.add_argument("--warm-start", type=Path)
+    parser.add_argument("--objective", choices=("window", "hard-negative-video"), default="window")
     args = parser.parse_args()
     if not 1 <= args.epochs <= 100 or not 1 <= args.threads <= 8:
         parser.error("epochs must be 1–100 and threads 1–8")
     if args.dense_negative_stride_sec is not None and not 0.5 <= args.dense_negative_stride_sec <= 30:
         parser.error("negative scan stride must be between 0.5 and 30 seconds")
+    if args.objective == "hard-negative-video" and args.dense_negative_stride_sec != 2:
+        parser.error("hard-negative-video requires --dense-negative-stride-sec 2 to match inference")
     import numpy as np
     import psutil
     import torch
@@ -136,7 +170,8 @@ def main():
             with Path(row["video_path"]).open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != row["sha256"]:
                     raise ValueError("A dataset file changed since manifest preparation")
-        samples = training_samples(videos, args.dense_negative_stride_sec)
+        samples = training_samples(videos, args.dense_negative_stride_sec,
+                                   dense_validation=args.objective == "hard-negative-video")
         config = {"architecture": "mobilenet_v3_small_temporal_v1", "input_size": 224,
                   "frames_per_clip": 3, "clip_span_sec": 2, "seed": 42,
                   "pretrained_url": weights.url, "pretrained_sha256": weights_sha,
@@ -145,6 +180,7 @@ def main():
                   "preprocessing": "RGB letterbox mean padding, ImageNet normalization",
                   "sample_spec": samples, "validation_scan_stride_sec": 2.0,
                   "threshold": 0.5}
+        config["objective"] = args.objective
         config["warm_start_sha256"] = warm_start_sha
         config["dense_training_negative_stride_sec"] = args.dense_negative_stride_sec
         signature = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
@@ -174,6 +210,8 @@ def main():
         for index in (train_index, val_index):
             if set(labels[index].tolist()) != {0, 1}:
                 raise ValueError("Each split must contain both labels")
+        train_groups = video_groups(samples, "train")
+        val_groups = video_groups(samples, "validation")
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         update(stage="training", training_started=True, trainable_parameters=trainable)
         optimizer = torch.optim.AdamW([
@@ -185,23 +223,43 @@ def main():
         best_state = None
         for epoch in range(1, args.epochs + 1):
             model.train()
-            order = train_index[torch.randperm(len(train_index))]
             losses = []
-            for indices in order.split(16):
-                optimizer.zero_grad(set_to_none=True)
-                logits = model.forward_cached(features[indices])
-                loss = F.binary_cross_entropy_with_logits(logits, labels[indices], pos_weight=pos_weight)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 5)
-                optimizer.step()
-                losses.append((float(loss.detach()), len(indices)))
+            if args.objective == "hard-negative-video":
+                # Accumulate a video at a time to bound memory even for long clips.
+                # Balanced class weights use all videos and never oversample validation.
+                order = torch.randperm(len(train_groups)).tolist()
+                counts = {label: sum(g["label"] == label for g in train_groups) for label in (0, 1)}
+                for start in range(0, len(order), 4):
+                    optimizer.zero_grad(set_to_none=True)
+                    batch = order[start:start + 4]
+                    for index in batch:
+                        group = train_groups[index]
+                        loss = video_loss(model.forward_cached(features[group["indices"]]), group["label"])
+                        weight = len(train_groups) / (2 * counts[group["label"]] * len(batch))
+                        (loss * weight).backward()
+                        losses.append((float(loss.detach()) * len(train_groups) / (2 * counts[group["label"]]), 1))
+                    torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 5)
+                    optimizer.step()
+            else:
+                order = train_index[torch.randperm(len(train_index))]
+                for indices in order.split(16):
+                    optimizer.zero_grad(set_to_none=True)
+                    logits = model.forward_cached(features[indices])
+                    loss = F.binary_cross_entropy_with_logits(logits, labels[indices], pos_weight=pos_weight)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 5)
+                    optimizer.step()
+                    losses.append((float(loss.detach()), len(indices)))
             model.eval()
             with torch.inference_mode():
-                val_logits = model.forward_cached(features[val_index])
-                val_losses = F.binary_cross_entropy_with_logits(val_logits, labels[val_index], reduction="none")
-                val_y = labels[val_index]
-                val_loss = float((val_losses[val_y == 0].mean() + val_losses[val_y == 1].mean()) / 2)
-            entry = {"epoch": epoch, "train_loss": sum(x * n for x, n in losses) / len(train_index),
+                if args.objective == "hard-negative-video":
+                    val_loss = float(balanced_video_loss(model, features, val_groups))
+                else:
+                    val_logits = model.forward_cached(features[val_index])
+                    val_losses = F.binary_cross_entropy_with_logits(val_logits, labels[val_index], reduction="none")
+                    val_y = labels[val_index]
+                    val_loss = float((val_losses[val_y == 0].mean() + val_losses[val_y == 1].mean()) / 2)
+            entry = {"epoch": epoch, "train_loss": sum(x * n for x, n in losses) / sum(n for _, n in losses),
                      "validation_balanced_loss": val_loss}
             history.append(entry)
             if val_loss < best_loss:
@@ -233,6 +291,7 @@ def main():
                                   "processing_sec": results[-1]["processing_sec"]}), flush=True)
         report = {
             "model": config["architecture"], "qwen_weights_modified": False,
+            "objective": args.objective,
             "training_completed": True, "best_epoch": best_epoch, "epochs": args.epochs,
             "train_unique_videos": sum(r["split"] == "train" for r in videos),
             "validation_unique_videos": len(results),

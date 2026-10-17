@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from train_detector import binary_metrics, training_samples, unique_videos
+from train_detector import binary_metrics, training_samples, unique_videos, video_groups, video_loss, balanced_video_loss
 from rat_ai.inference import candidate_events
 
 
@@ -34,6 +34,18 @@ class TrainingDataTests(unittest.TestCase):
         self.assertEqual(len([s for s in dense if s["label"] == 0]), 10)
         validation_rows = [{**row, "split": "validation"} for row in rows]
         self.assertEqual(len([s for s in training_samples(validation_rows, 2) if s["label"] == 0]), 4)
+        self.assertEqual(len([s for s in training_samples(validation_rows, 2, dense_validation=True)
+                              if s["label"] == 0]), 10)
+
+    def test_video_groups_exclude_other_split_and_merge_windows(self):
+        rows = [{"sha256": "negative", "label": 0, "split": "train"},
+                {"sha256": "positive", "label": 1, "split": "train"},
+                {"sha256": "negative", "label": 0, "split": "train"},
+                {"sha256": "held-out", "label": 1, "split": "validation"}]
+        groups = video_groups(rows, "train")
+        self.assertEqual([g["indices"] for g in groups], [[0, 2], [1]])
+        with self.assertRaises(ValueError):
+            video_groups(rows + [{**rows[0], "label": 1}], "train")
 
     def test_metrics_do_not_hide_false_alarms_or_misses(self):
         m = binary_metrics([1, 1, 0, 0], [0.9, 0.2, 0.7, 0.1])
@@ -52,6 +64,27 @@ class TrainingDataTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "Requires CPU training dependencies")
 class FineTuningTests(unittest.TestCase):
+    def test_hard_negative_loss_targets_false_alarm_and_pushes_scores_down(self):
+        import torch
+        logits = torch.tensor([-4.0, -4.0, 3.0], requires_grad=True)
+        loss = video_loss(logits, 0)
+        loss.backward()
+        self.assertTrue(all(value > 0 for value in logits.grad.tolist()))
+        self.assertGreater(float(logits.grad[2]), 10 * float(logits.grad[0]))
+        self.assertGreater(float(loss.detach()), float(torch.nn.functional.softplus(logits.detach()).mean()))
+
+    def test_each_video_has_equal_weight_independent_of_window_count(self):
+        import torch
+        class Scores:
+            def forward_cached(self, features):
+                return features
+        groups = [{"label": 0, "indices": [0]}, {"label": 0, "indices": [1]},
+                  {"label": 1, "indices": [2]}]
+        short = balanced_video_loss(Scores(), torch.tensor([-1.0, 2.0, 0.0]), groups)
+        groups[1]["indices"] = [1, 3, 4, 5]
+        long = balanced_video_loss(Scores(), torch.tensor([-1.0, 2.0, 0.0, 2.0, 2.0, 2.0]), groups)
+        self.assertAlmostEqual(float(short), float(long), places=6)
+
     def test_gradients_reach_visual_tail_but_not_frozen_prefix(self):
         import torch
         from rat_ai.temporal import TemporalDetector
