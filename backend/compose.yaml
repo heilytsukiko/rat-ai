@@ -1,12 +1,15 @@
 services:
   backend:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
+    environment:
+      DATA_DIR: /app/storage
     volumes:
       - jobs:/app/storage
-      - ../ai_engine:/models:ro
     restart: unless-stopped
 volumes:
   jobs:

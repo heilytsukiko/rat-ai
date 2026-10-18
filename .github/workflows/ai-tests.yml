@@ -2,16 +2,19 @@ name: AI and application tests
 
 on:
   pull_request:
-    paths: ["ai/**", "backend/**", "frontend/**", ".github/workflows/ai-tests.yml"]
+    paths: ["ai/**", "backend/**", "frontend/**", "tools/**", "compose.yaml", ".dockerignore", ".github/workflows/ai-tests.yml"]
   push:
-    paths: ["ai/**", "backend/**", "frontend/**", ".github/workflows/ai-tests.yml"]
+    paths: ["ai/**", "backend/**", "frontend/**", "tools/**", "compose.yaml", ".dockerignore", ".github/workflows/ai-tests.yml"]
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -29,6 +32,11 @@ jobs:
       - name: Test backend contracts and experimental integration
         working-directory: backend
         run: python -m pytest tests -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund
@@ -38,3 +46,17 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - name: Build and start the complete service
+        if: runner.os == 'Linux'
+        run: |
+          python tools/configure_local.py
+          docker compose up --build -d --wait
+      - name: Exercise the real detector through Nginx
+        if: runner.os == 'Linux'
+        run: python ai/tools/smoke_local_stack.py --url http://127.0.0.1:8080
+      - name: Container diagnostics
+        if: failure() && runner.os == 'Linux'
+        run: docker compose logs --tail=100
+      - name: Stop integration containers
+        if: always() && runner.os == 'Linux'
+        run: docker compose down

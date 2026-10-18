@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--checkpoint", type=Path,
                         default=None, help="Defaults to the packaged experimental detector")
     parser.add_argument("--output", type=Path, default=Path("ai/local/prediction.json"))
-    parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument('--describe-with-config',type=Path,help='Optional cached GPU base-model config')
     args = parser.parse_args()
     started = time.perf_counter()
@@ -23,11 +23,13 @@ def main():
     torch.set_num_threads(4)
     model, config = load_detector(args.checkpoint)
     policy = validate_candidate_policy(config.get("candidate_policy"))
+    threshold = config["threshold"] if args.threshold is None else args.threshold
+    candidate_events({"scan_times_sec": [], "scan_scores": []}, threshold, **policy)
     analysis_started=time.perf_counter()
     scored = score_video(model, args.video)
     result = {**scored, "experimental": True, "candidate_policy": policy,
-              "candidates": candidate_events(scored, args.threshold, **policy),
-              "threshold": args.threshold, "model": config["architecture"],
+              "candidates": candidate_events(scored, threshold, **policy),
+              "threshold": threshold, "model": config["architecture"],
               "total_elapsed_sec": time.perf_counter() - started,
               "note": "Binary statistical candidates; event types and legal sources are not assigned."}
     if args.describe_with_config:

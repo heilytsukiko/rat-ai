@@ -6,20 +6,16 @@ FastAPI API по контракту Datathon 26. Работает локальн
 
 ## Запуск
 
-Python 3.12+, FFmpeg/ffprobe в PATH. Из папки backend:
+Готовый запуск UI, API и CPU-модели — из корня репозитория:
 
 ```sh
-python -m venv .venv
-# Windows: .venv\Scripts\activate; Linux/macOS: source .venv/bin/activate
-python -m pip install -r requirements.txt
-cp .env.example .env
-# Укажите случайный API_KEY (не менее 16 символов).
-# Для локального запуска: ANALYZER_COMMAND=["python", "../ai_engine/infer.py"]
-# Путь /models/infer.py из .env.example предназначен для Docker.
-uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8000 --workers 1
+python3 tools/configure_local.py
+docker compose up --build -d --wait
 ```
 
-Для `--env-file` установите `python-dotenv` (входит в uvicorn[standard]). Docker: `docker compose up --build`. В контейнере исходники модели доступны в `/models`; пример команды в `.env`: `ANALYZER_COMMAND=["python","/models/infer.py"]`. Дополнительные зависимости конкретной модели нужно добавить в образ, веса заранее положить локально. Запуск контейнера сам по себе не устанавливает модель.
+Интерфейс: http://127.0.0.1:8080. Образ включает FFmpeg, зависимости и опубликованные веса. В примере конфигурации выбран `experimental`; если переменная отсутствует, код API использует `strict`. Для запуска только backend из этой папки: `docker compose up --build -d`, API на http://127.0.0.1:8000.
+
+Для разработки без Docker используйте [локальный launcher](../ai/LOCAL_STACK.md): он настраивает команду модели и общий ключ proxy автоматически. Пути `/opt/ai/` из `.env.example` относятся к контейнеру.
 
 OpenAPI: `/docs`, `/openapi.json`. `/health` проверяет доступность сервера, а не готовность модели. Размещайте за HTTPS reverse proxy с ограничением тела запроса (например 110 MB) и таймаутами. Приложение ограничивает размер файла после multipart-разбора; лимит тела на proxy защищает также от больших multipart-запросов.
 
@@ -31,7 +27,7 @@ curl -X POST http://localhost:8000/api/v1/analyze -H "X-API-Key: YOUR_KEY" -F "f
 curl http://localhost:8000/api/v1/jobs/JOB_ID -H "X-API-Key: YOUR_KEY"
 ```
 
-Опрос раз в 1–2 секунды. Статусы: `processing`, `done`, `failed`. В `done`: `verdict` (`violation` / `no_violation`), `violations`, `duration_sec`. Каждое событие содержит `type`, `timecode_sec`, `description`, `source` и 1–3 `evidence_frames` с `timestamp_sec` и `image_base64` (JPEG без data URL префикса). В `failed`: `error`. Ошибки: 401 ключ, 404 задача, 413 размер, 415 расширение, 422 пустой файл/поле, 429 очередь заполнена. Принимаются MOV и MP4; фактический контейнер проверяет ffprobe.
+Опрос раз в 1–2 секунды. Статусы: `processing`, `done`, `failed`. В строгом режиме в `done`: `verdict` (`violation` / `no_violation`), `violations`, `duration_sec`. Каждое событие содержит `type`, `timecode_sec`, `description`, `source` и 1–3 `evidence_frames` с `timestamp_sec` и `image_base64` (JPEG без data URL префикса). В `failed`: `error`. Ошибки: 401 ключ, 404 задача, 413 размер, 415 расширение, 422 пустой файл/поле, 429 очередь заполнена. Принимаются MOV и MP4; фактический контейнер проверяет ffprobe.
 
 ## Контракт локальной модели
 
