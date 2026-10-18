@@ -40,7 +40,7 @@ describe('experimental detector integration', () => {
       candidates: [{ ...experimental().candidates[0], observation_draft: 'A synthetic rectangle moves.' }] };
     const result = mapResult(payload, 'synthetic.mov');
     expect(result.verdict).toBe('review_required');
-    expect(result.violations[0].description).toContain('Черновик описания ИИ');
+    expect(result.violations[0].description).toContain('Предварительное описание ИИ');
     expect(result.violations[0].description).toContain('A synthetic rectangle moves.');
     expect(result.violations[0].source).toBeUndefined();
     expect(() => mapResult({ ...payload, observation_model: undefined }, 'synthetic.mov')).toThrow(INVALID_RESULT);
@@ -54,7 +54,9 @@ describe('experimental detector integration', () => {
     expect(result.experimental).toBe(true);
     expect(result.verdict).toBe('review_required');
     expect(result.violations[0].source).toBeUndefined();
-    expect(result.violations[0].description).toContain('не вероятность нарушения');
+    expect(result.violations[0].description).toContain('не подтверждает нарушение');
+    expect(result.violations[0].type).toBe('Момент 00:04.0');
+    expect(result.violations[0].detector).toEqual({ score: .8, threshold: .5, hasObservation: false });
     expect(result.violations[0].evidenceFrames[0].imageUrl).toContain('data:image/jpeg;base64,');
   });
   it('keeps empty candidate output inconclusive', () => {

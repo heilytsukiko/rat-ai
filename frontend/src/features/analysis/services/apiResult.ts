@@ -1,3 +1,4 @@
+import { formatTime } from '../model/format';
 import type { AnalysisEvent, AnalysisResult, RegulatorySource } from '../model/types';
 
 export const INVALID_RESULT = 'Сервер вернул некорректный результат анализа. Повторите проверку.';
@@ -67,8 +68,11 @@ function experimentalResult(value: Record<string, unknown>, fileName: string): A
     const observation = event.observation_draft;
     if (observation !== undefined && (!text(observation) || observation.length > 1600
       || value.observation_model !== 'Qwen/Qwen2.5-VL-7B-Instruct')) return invalid();
-    return { id: `${value.job_id}-${index}`, type: 'Фрагмент для проверки', timecodeSec: event.timecode_sec,
-      description: `${observation ? `Черновик описания ИИ — проверьте по кадрам: ${observation}\n\n` : ''}Оценка детектора: ${event.score.toFixed(3)}. Это не вероятность нарушения. Тип события и нормативное основание не установлены.`,
+    return { id: `${value.job_id}-${index}`, type: `Момент ${formatTime(event.timecode_sec, true)}`, timecodeSec: event.timecode_sec,
+      description: observation
+        ? `Предварительное описание ИИ: ${observation}`
+        : `Откройте кадр на ${formatTime(event.timecode_sec, true)} и проверьте этот момент в исходном видео. Детектор выделил его для просмотра, но не умеет объяснять действия людей. Это срабатывание само по себе не подтверждает нарушение.`,
+      detector: { score: event.score, threshold, hasObservation: Boolean(observation) },
       evidenceFrames: event.evidence_frames.map((frame: unknown, frameIndex: number) => {
         if (!isRecord(frame) || !timestamp(frame.timestamp_sec) || frame.timestamp_sec >= duration
           || Math.abs(frame.timestamp_sec - (event.timecode_sec as number)) > 5) return invalid();

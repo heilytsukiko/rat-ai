@@ -21,6 +21,7 @@ export interface AnalysisEvent {
   description: string;
   evidenceFrames: EvidenceFrame[];
   source?: RegulatorySource;
+  detector?: { score: number; threshold: number; hasObservation: boolean };
 }
 
 export interface AnalysisResult {
