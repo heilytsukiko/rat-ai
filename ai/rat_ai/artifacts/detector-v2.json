@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "architecture": "mobilenet_v3_small_temporal_v1",
+  "input_size": 224,
+  "frames_per_clip": 3,
+  "clip_span_sec": 2,
+  "preprocessing": "RGB letterbox mean padding, ImageNet normalization",
+  "threshold": 0.5,
+  "candidate_policy": {"min_windows": 2, "representative": "center"},
+  "weights_sha256": "5343a77a25b44c5a52b950583e6d3a08d749c4583d669bbbaba549cfc1990a29",
+  "best_epoch": 6,
+  "base_weights_url": "https://download.pytorch.org/models/mobilenet_v3_small-047dcff4.pth",
+  "base_weights_sha256": "047dcff4addef86ea5bc2eff13c9614dc11f47ab1160d0a71a25e7db994f4e1f",
+  "experimental": true
+}

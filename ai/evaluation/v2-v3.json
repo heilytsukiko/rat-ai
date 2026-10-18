@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "validation_videos": 8,
+  "baseline": {
+    "tp": 4,
+    "tn": 0,
+    "fp": 4,
+    "fn": 0,
+    "accuracy": 0.5,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1": 0.6666666666666666,
+    "threshold": 0.5,
+    "roc_auc": 0.0
+  },
+  "candidate": {
+    "tp": 0,
+    "tn": 4,
+    "fp": 0,
+    "fn": 4,
+    "accuracy": 0.5,
+    "precision": null,
+    "recall": 0.0,
+    "f1": 0.0,
+    "threshold": 0.5,
+    "roc_auc": 0.3125
+  },
+  "false_alarms_reduced_without_more_misses": false,
+  "limitations": [
+    "Repeatedly used validation set; no independent test set.",
+    "A positive video can be flagged at an incorrect timestamp.",
+    "Exact copies grouped; related filming sessions may cross splits.",
+    "Binary candidates do not establish a violation type or legal source."
+  ]
+}

@@ -28,6 +28,7 @@ function jpeg(value: unknown): string {
 
 // JSON crosses a trust boundary. A TypeScript assertion cannot validate a server response.
 export function mapResult(value: unknown, fileName: string): AnalysisResult {
+  if (isRecord(value) && value.analysis_mode === 'experimental') return experimentalResult(value, fileName);
   if (!isRecord(value) || !text(value.job_id) || value.status !== 'done'
     || !['violation', 'no_violation'].includes(String(value.verdict)) || !Array.isArray(value.violations)
     || value.violations.length > 100 || (value.verdict === 'violation') !== Boolean(value.violations.length)) return invalid();
@@ -49,4 +50,32 @@ export function mapResult(value: unknown, fileName: string): AnalysisResult {
   });
   return { jobId: value.job_id, fileName, verdict: value.verdict as AnalysisResult['verdict'],
     durationSec: duration as number | undefined, isDemo: false, violations };
+}
+
+function experimentalResult(value: Record<string, unknown>, fileName: string): AnalysisResult {
+  const duration = value.duration_sec;
+  const threshold = value.threshold;
+  if (!text(value.job_id) || value.status !== 'done' || value.experimental !== true
+    || value.verdict !== undefined || value.violations !== undefined || !text(value.model)
+    || !timestamp(duration) || duration <= 0 || duration > 180
+    || !timestamp(threshold) || threshold > 1
+    || !Array.isArray(value.candidates) || value.candidates.length > 100) return invalid();
+  const violations: AnalysisEvent[] = value.candidates.map((event: unknown, index: number) => {
+    if (!isRecord(event) || !timestamp(event.timecode_sec) || event.timecode_sec >= duration
+      || !timestamp(event.score) || event.score < threshold || event.score > 1
+      || !Array.isArray(event.evidence_frames) || event.evidence_frames.length < 1 || event.evidence_frames.length > 3) return invalid();
+    const observation = event.observation_draft;
+    if (observation !== undefined && (!text(observation) || observation.length > 1600
+      || value.observation_model !== 'Qwen/Qwen2.5-VL-7B-Instruct')) return invalid();
+    return { id: `${value.job_id}-${index}`, type: 'Фрагмент для проверки', timecodeSec: event.timecode_sec,
+      description: `${observation ? `Черновик описания ИИ — проверьте по кадрам: ${observation}\n\n` : ''}Оценка детектора: ${event.score.toFixed(3)}. Это не вероятность нарушения. Тип события и нормативное основание не установлены.`,
+      evidenceFrames: event.evidence_frames.map((frame: unknown, frameIndex: number) => {
+        if (!isRecord(frame) || !timestamp(frame.timestamp_sec) || frame.timestamp_sec >= duration
+          || Math.abs(frame.timestamp_sec - (event.timecode_sec as number)) > 5) return invalid();
+        return { id: `${value.job_id}-${index}-${frameIndex}`, timestampSec: frame.timestamp_sec,
+          imageUrl: `data:image/jpeg;base64,${jpeg(frame.image_base64)}`, alt: 'Кадр фрагмента для проверки' };
+      }) };
+  });
+  return { jobId: value.job_id, fileName, verdict: 'review_required', durationSec: duration,
+    isDemo: false, experimental: true, violations };
 }

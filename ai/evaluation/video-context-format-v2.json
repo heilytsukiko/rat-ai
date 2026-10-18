@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "experiment": "video-context-format-repair-v2",
+  "selected_validation_videos": 8,
+  "selected_windows": 24,
+  "models": {
+    "qwen25-7b": {
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+      "revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5"
+    },
+    "qwen3-4b": {
+      "model": "Qwen/Qwen3-VL-4B-Instruct",
+      "revision": "ebb281ec70b05090aa6165b016eac8ec08e71b17"
+    }
+  },
+  "comparisons": {
+    "four_frames": {
+      "windows": 24,
+      "models": {
+        "qwen25-7b": {
+          "parsed": 24,
+          "clear": 23,
+          "review_counts": {
+            "ordinary_visible_action": 23,
+            "unclear": 1
+          },
+          "action_counts": {
+            "phone_handling": 2,
+            "leaving_workstation": 22
+          },
+          "object_counts": {
+            "phone": 2,
+            "person": 21,
+            "unclear": 1
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 81.58
+        },
+        "qwen3-4b": {
+          "parsed": 23,
+          "clear": 9,
+          "review_counts": {
+            "ordinary_visible_action": 14,
+            "unclear": 10
+          },
+          "action_counts": {
+            "no_visible_action": 21,
+            "unclear": 1,
+            "leaving_workstation": 1,
+            "cash_counting": 1
+          },
+          "object_counts": {
+            "person": 20,
+            "bag": 5,
+            "counter": 19,
+            "phone": 6,
+            "papers": 4,
+            "computer": 10,
+            "unclear": 9,
+            "banknotes": 1
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 148.37
+        }
+      },
+      "two_model_agreement": {
+        "uncertain": 24
+      },
+      "joint_review_counts": {
+        "unclear": 24
+      },
+      "agreed_action_counts": {},
+      "min_chronological_frames": 4,
+      "max_chronological_frames": 4
+    },
+    "context16": {
+      "windows": 24,
+      "models": {
+        "qwen25-7b": {
+          "parsed": 23,
+          "clear": 23,
+          "review_counts": {
+            "ordinary_visible_action": 23,
+            "unclear": 1
+          },
+          "action_counts": {
+            "phone_handling": 4,
+            "leaving_workstation": 19,
+            "unclear": 1
+          },
+          "object_counts": {
+            "phone": 4,
+            "person": 19
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 93.48
+        },
+        "qwen3-4b": {
+          "parsed": 24,
+          "clear": 10,
+          "review_counts": {
+            "ordinary_visible_action": 15,
+            "unclear": 8,
+            "possible_issue": 1
+          },
+          "action_counts": {
+            "no_visible_action": 18,
+            "leaving_workstation": 4,
+            "cash_transfer": 1,
+            "phone_handling": 1
+          },
+          "object_counts": {
+            "person": 24,
+            "bag": 2,
+            "counter": 13,
+            "unclear": 8,
+            "computer": 8,
+            "papers": 4,
+            "phone": 5,
+            "banknotes": 1
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 138.75
+        }
+      },
+      "two_model_agreement": {
+        "uncertain": 24
+      },
+      "joint_review_counts": {
+        "unclear": 24
+      },
+      "agreed_action_counts": {},
+      "min_chronological_frames": 9,
+      "max_chronological_frames": 13
+    },
+    "context16_tiles": {
+      "windows": 24,
+      "models": {
+        "qwen25-7b": {
+          "parsed": 14,
+          "clear": 14,
+          "review_counts": {
+            "unclear": 10,
+            "ordinary_visible_action": 14
+          },
+          "action_counts": {
+            "unclear": 10,
+            "leaving_workstation": 11,
+            "phone_handling": 3
+          },
+          "object_counts": {
+            "person": 11,
+            "phone": 3
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 107.51
+        },
+        "qwen3-4b": {
+          "parsed": 24,
+          "clear": 4,
+          "review_counts": {
+            "ordinary_visible_action": 10,
+            "unclear": 13,
+            "possible_issue": 1
+          },
+          "action_counts": {
+            "no_visible_action": 16,
+            "leaving_workstation": 4,
+            "phone_handling": 3,
+            "cash_transfer": 1
+          },
+          "object_counts": {
+            "person": 24,
+            "bag": 1,
+            "counter": 12,
+            "unclear": 13,
+            "phone": 7,
+            "papers": 3,
+            "computer": 4,
+            "banknotes": 1
+          },
+          "review_normalized_to_unclear": 0,
+          "elapsed_sec": 139.14
+        }
+      },
+      "two_model_agreement": {
+        "uncertain": 24
+      },
+      "joint_review_counts": {
+        "unclear": 24
+      },
+      "agreed_action_counts": {},
+      "min_chronological_frames": 9,
+      "max_chronological_frames": 13
+    }
+  },
+  "peak_vram_bytes": 7747169280,
+  "accuracy_measured": false,
+  "promoted_to_site": false,
+  "limitations": [
+    "Fresh visual inference, but no human-reviewed action/object labels: agreement is not accuracy.",
+    "Validation windows were selected without event labels; no model training or promotion in this run.",
+    "Context reconstructed from existing 336px samples; actual decoded timestamps were not retained.",
+    "16 is a maximum, not fabricated padding; end clips may contain fewer unique nominal times.",
+    "Fixed overlapping tiles do not detect hands or recover detail lost during original resizing.",
+    "Sparse images and generated frame references do not establish full procedures or exact event boundaries.",
+    "Both models may share errors; possible_issue remains a machine suggestion for review.",
+    "Post-hoc parser repair and replay of invalid answers; not a new independent accuracy test."
+  ],
+  "replayed_responses": 60,
+  "parser_policy": "retain_valid_extra_references_unknown_objects_abstain_v2",
+  "original_run_elapsed_sec": 738.3,
+  "replay_elapsed_sec": 357.0,
+  "original_peak_vram_bytes": 7747169280
+}
