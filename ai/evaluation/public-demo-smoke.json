@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "url": "https://8080-7sjr06h5.gobrev.dev",
+  "public_access_without_credentials": true,
+  "assets_checked": 2,
+  "synthetic_upload_and_analysis": true,
+  "candidates": 1,
+  "jpeg_frames_checked": 3,
+  "observation_model": "Qwen/Qwen2.5-VL-7B-Instruct",
+  "elapsed_sec": 25.2,
+  "quality_evaluated": false
+}
