@@ -60,7 +60,16 @@ def smoke(url, video, output):
     if not math.isfinite(duration) or not 0 < duration <= 180:
         raise ValueError('Invalid duration')
     for candidate in result['candidates']:
-        if 'observation_draft' in candidate:
+        if 'observation_report' in candidate:
+            report = candidate['observation_report']
+            if (result.get('observation_model') != 'Qwen/Qwen2.5-VL-7B-Instruct'
+                or not isinstance(report, dict) or not report.get('summary')
+                or len(report.get('sampled_timestamps_sec', [])) != 8
+                or not report.get('actions')
+                or any(action['timestamp_sec'] not in report['sampled_timestamps_sec'] for action in report['actions'])):
+                raise ValueError('Invalid structured observation report')
+            described += 1
+        elif 'observation_draft' in candidate:
             if (result.get('observation_model')!='Qwen/Qwen2.5-VL-7B-Instruct'
                 or not isinstance(candidate['observation_draft'],str)
                 or not 0<len(candidate['observation_draft'].strip())<=1600):

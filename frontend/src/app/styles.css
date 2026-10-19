@@ -261,3 +261,7 @@ progress::-moz-progress-bar { background: var(--accent); }
   .event-item { gap: 7px; }
   .event-item time { font-size: 11px; }
 }
+
+.observation-details ol, .observation-details ul { padding-left: 1.3rem; margin: 12px 0; }
+.observation-details li { margin: 10px 0; line-height: 1.65; overflow-wrap: anywhere; }
+.observation-details time { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }

@@ -123,3 +123,44 @@ def test_invalid_candidates_fail(change):
     prediction['candidates'][0].update(change)
     with pytest.raises(ValueError):
         adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('Invalid candidate'))
+
+
+def reported():
+    prediction = raw()
+    prediction['observation_model'] = 'Qwen/Qwen2.5-VL-7B-Instruct'
+    prediction['candidates'][0]['observation_report'] = {
+        'summary': 'Тестовый прямоугольник смещается.',
+        'actions': [{'timestamp_sec': 0, 'description': 'Прямоугольник слева.'},
+                    {'timestamp_sec': 6, 'description': 'Прямоугольник справа.'}],
+        'object_description': 'Прямоугольник.', 'assessment': 'no_transfer_visible',
+        'reason': 'Людей и передачи не видно.', 'limitations': ['Только выбранные кадры.'],
+        'sampled_timestamps_sec': [0, 1, 2, 2.5, 3, 4, 5, 6]}
+    return prediction
+
+
+def test_report_preserves_actions_and_extracts_real_context_frames():
+    result = adapt_prediction(json.dumps(reported()), 20, lambda t: {'timestamp_sec': t})
+    event = result['candidates'][0]
+    assert event['observation_report']['assessment'] == 'no_transfer_visible'
+    assert [f['timestamp_sec'] for f in event['evidence_frames']] == [2.5, 0, 6]
+    assert 'verdict' not in result
+
+
+@pytest.mark.parametrize('field,value', [
+    ('assessment', 'confirmed_bribe'), ('summary', ' '), ('limitations', [' ']),
+    ('actions', [{'timestamp_sec': 1.1, 'description': 'Not a sampled frame'}]),
+    ('actions', [{'timestamp_sec': 6, 'description': 'Later'}, {'timestamp_sec': 0, 'description': 'Earlier'}]),
+    ('sampled_timestamps_sec', [0, 1, 2, 2.5, 3, 4, 5, 19]),
+])
+def test_report_cannot_invent_frame_references_or_final_verdict(field, value):
+    prediction = reported()
+    prediction['candidates'][0]['observation_report'][field] = value
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('Invalid report must not extract evidence'))
+
+
+def test_report_requires_model_attribution():
+    prediction = reported()
+    del prediction['observation_model']
+    with pytest.raises(ValueError):
+        adapt_prediction(json.dumps(prediction), 20, lambda _: pytest.fail('Missing model'))

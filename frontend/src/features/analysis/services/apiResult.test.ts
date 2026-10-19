@@ -73,3 +73,25 @@ describe('experimental detector integration', () => {
     expect(() => mapResult({ ...experimental(), ...change }, 'a.mov')).toThrow(INVALID_RESULT);
   });
 });
+
+const report = () => ({ summary: 'Тестовый прямоугольник перемещается.',
+  actions: [{ timestamp_sec: 1, description: 'Прямоугольник слева.' }],
+  object_description: 'Прямоугольник.', assessment: 'no_transfer_visible',
+  reason: 'Людей нет.', limitations: ['Только выбранные кадры.'],
+  sampled_timestamps_sec: [1, 2, 3, 4, 5, 6, 7, 7.5] });
+const reported = () => ({ ...experimental(), observation_model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+  candidates: [{ ...experimental().candidates[0], observation_report: report() }] });
+
+it('preserves a structured visual report without inventing a violation', () => {
+  const result = mapResult(reported(), 'test.mov');
+  expect(result.violations[0].description).toBe(report().summary);
+  expect(result.violations[0].observationReport?.actions[0].timestamp_sec).toBe(1);
+  expect(result.violations[0].detector?.hasObservation).toBe(true);
+  expect(result.verdict).toBe('review_required');
+});
+it.each([{ assessment: 'confirmed_bribe' }, { actions: [{ timestamp_sec: 1.25, description: 'Invented frame' }] },
+  { limitations: [] }, { summary: ' ' }])('rejects an invalid structured report %j', change => {
+  const payload = reported();
+  Object.assign(payload.candidates[0].observation_report, change);
+  expect(() => mapResult(payload, 'test.mov')).toThrow(INVALID_RESULT);
+});

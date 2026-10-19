@@ -14,7 +14,18 @@ export interface EvidenceFrame {
   alt: string;
 }
 
+export interface ObservationReport {
+  summary: string;
+  actions: { timestamp_sec: number; description: string }[];
+  object_description: string;
+  assessment: 'possible_improper_transfer' | 'ordinary_exchange' | 'no_transfer_visible' | 'unclear';
+  reason: string;
+  limitations: string[];
+  sampled_timestamps_sec: number[];
+}
+
 export interface AnalysisEvent {
+  observationReport?: ObservationReport;
   id: string;
   type: string;
   timecodeSec: number;

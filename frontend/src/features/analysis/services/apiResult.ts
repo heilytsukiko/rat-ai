@@ -1,5 +1,5 @@
 import { formatTime } from '../model/format';
-import type { AnalysisEvent, AnalysisResult, RegulatorySource } from '../model/types';
+import type { AnalysisEvent, AnalysisResult, ObservationReport, RegulatorySource } from '../model/types';
 
 export const INVALID_RESULT = 'Сервер вернул некорректный результат анализа. Повторите проверку.';
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -53,6 +53,26 @@ export function mapResult(value: unknown, fileName: string): AnalysisResult {
     durationSec: duration as number | undefined, isDemo: false, violations };
 }
 
+function observationReport(value: unknown, duration: number, center: number): ObservationReport | undefined {
+  if (value === undefined) return undefined;
+  const bounded = (v: unknown, max: number): v is string => text(v) && v.length <= max;
+  if (!isRecord(value) || !bounded(value.summary, 1600) || !bounded(value.object_description, 800)
+    || !bounded(value.reason, 800) || !['possible_improper_transfer', 'ordinary_exchange', 'no_transfer_visible', 'unclear'].includes(String(value.assessment))
+    || !Array.isArray(value.sampled_timestamps_sec) || value.sampled_timestamps_sec.length !== 8
+    || !Array.isArray(value.actions) || value.actions.length < 1 || value.actions.length > 8
+    || !Array.isArray(value.limitations) || value.limitations.length < 1 || value.limitations.length > 6
+    || !value.limitations.every(item => bounded(item, 400))) return invalid();
+  const times = value.sampled_timestamps_sec;
+  if (!times.every((time, index) => timestamp(time) && time < duration && Math.abs(time - center) <= 3.6 && (!index || time >= times[index - 1]))) return invalid();
+  let previous = -1;
+  for (const action of value.actions) {
+    if (!isRecord(action) || !timestamp(action.timestamp_sec) || action.timestamp_sec < previous
+      || !times.includes(action.timestamp_sec) || !bounded(action.description, 400)) return invalid();
+    previous = action.timestamp_sec;
+  }
+  return value as unknown as ObservationReport;
+}
+
 function experimentalResult(value: Record<string, unknown>, fileName: string): AnalysisResult {
   const duration = value.duration_sec;
   const threshold = value.threshold;
@@ -65,14 +85,17 @@ function experimentalResult(value: Record<string, unknown>, fileName: string): A
     if (!isRecord(event) || !timestamp(event.timecode_sec) || event.timecode_sec >= duration
       || !timestamp(event.score) || event.score < threshold || event.score > 1
       || !Array.isArray(event.evidence_frames) || event.evidence_frames.length < 1 || event.evidence_frames.length > 3) return invalid();
+    const report = observationReport(event.observation_report, duration, event.timecode_sec);
+    if (report && value.observation_model !== 'Qwen/Qwen2.5-VL-7B-Instruct') return invalid();
     const observation = event.observation_draft;
     if (observation !== undefined && (!text(observation) || observation.length > 1600
       || value.observation_model !== 'Qwen/Qwen2.5-VL-7B-Instruct')) return invalid();
-    return { id: `${value.job_id}-${index}`, type: `Момент ${formatTime(event.timecode_sec, true)}`, timecodeSec: event.timecode_sec,
-      description: observation
+    return { id: `${value.job_id}-${index}`, type: report ? 'Разбор эпизода' : `Момент ${formatTime(event.timecode_sec, true)}`, timecodeSec: event.timecode_sec,
+      observationReport: report,
+      description: report ? report.summary : observation
         ? `Предварительное описание ИИ: ${observation}`
         : `Откройте кадр на ${formatTime(event.timecode_sec, true)} и проверьте этот момент в исходном видео. Детектор выделил его для просмотра, но не умеет объяснять действия людей. Это срабатывание само по себе не подтверждает нарушение.`,
-      detector: { score: event.score, threshold, hasObservation: Boolean(observation) },
+      detector: { score: event.score, threshold, hasObservation: Boolean(report || observation) },
       evidenceFrames: event.evidence_frames.map((frame: unknown, frameIndex: number) => {
         if (!isRecord(frame) || !timestamp(frame.timestamp_sec) || frame.timestamp_sec >= duration
           || Math.abs(frame.timestamp_sec - (event.timecode_sec as number)) > 5) return invalid();

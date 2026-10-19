@@ -5,12 +5,30 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ObservedAction(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    timestamp_sec: float = Field(ge=0, allow_inf_nan=False)
+    description: str = Field(min_length=1, max_length=400)
+
+
+class ObservationReport(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    summary: str = Field(min_length=1, max_length=1600)
+    actions: list[ObservedAction] = Field(min_length=1, max_length=8)
+    object_description: str = Field(min_length=1, max_length=800)
+    assessment: Literal['possible_improper_transfer', 'ordinary_exchange', 'no_transfer_visible', 'unclear']
+    reason: str = Field(min_length=1, max_length=800)
+    limitations: list[str] = Field(min_length=1, max_length=6)
+    sampled_timestamps_sec: list[float] = Field(min_length=8, max_length=8)
+
+
 class Candidate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     timecode_sec: float = Field(ge=0, allow_inf_nan=False)
     score: float = Field(ge=0, le=1, allow_inf_nan=False)
     first_scored_time_sec: float = Field(ge=0, allow_inf_nan=False)
     last_scored_time_sec: float = Field(ge=0, allow_inf_nan=False)
+    observation_report: ObservationReport | None = None
     observation_draft: str | None = Field(default=None,max_length=1600)
 
 
@@ -78,7 +96,7 @@ def adapt_prediction(text, duration, extract_frame):
                 for e in prediction.candidates]
     if received != expected:
         raise ValueError('Experimental candidates disagree with declared policy')
-    if any(e.observation_draft is not None for e in prediction.candidates) and not prediction.observation_model:
+    if any(e.observation_draft is not None or e.observation_report is not None for e in prediction.candidates) and not prediction.observation_model:
         raise ValueError('A draft requires declared observation model')
     candidates = []
     previous_end = -1
@@ -88,12 +106,24 @@ def adapt_prediction(text, duration, extract_frame):
         if event.score < prediction.threshold or (event.timecode_sec, event.score) not in zip(times, scores):
             raise ValueError('Experimental candidate disagrees with scan')
         previous_end = event.last_scored_time_sec
+        report = event.observation_report
+        if report is not None:
+            sampled = report.sampled_timestamps_sec
+            if (any(not math.isfinite(t) or not 0 <= t < duration or abs(t-event.timecode_sec) > 3.6 for t in sampled)
+                or any(a > b for a, b in zip(sampled, sampled[1:]))
+                or any(action.timestamp_sec not in sampled for action in report.actions)
+                or any(a.timestamp_sec > b.timestamp_sec for a, b in zip(report.actions, report.actions[1:]))
+                or any(not item.strip() or len(item) > 400 for item in report.limitations)):
+                raise ValueError('Invalid observation references or limitations')
         timestamps=[event.timecode_sec]
         if event.observation_draft is not None:
             if not event.observation_draft.strip():
                 raise ValueError('Empty observation draft')
             timestamps=list(dict.fromkeys([event.timecode_sec,max(0,event.timecode_sec-3.5),
                                             min(max(0,duration-.15),event.timecode_sec+3.5)]))
+        if report is not None:
+            sampled = report.sampled_timestamps_sec
+            timestamps = list(dict.fromkeys([event.timecode_sec, sampled[0], sampled[-1]]))
         candidates.append({**event.model_dump(exclude_none=True),
                            'evidence_frames': [extract_frame(t) for t in timestamps]})
     return {'analysis_mode': 'experimental', 'experimental': True,
